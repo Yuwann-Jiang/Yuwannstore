@@ -36,6 +36,7 @@
 /todo-netlify/.notify-secret
 /todo-netlify/.admin-secret
 /todo-netlify/.admin-password
+/todo-netlify/.netlify-token
 
 # 运行数据（本地版的明文数据库）
 /todo-server/data.json

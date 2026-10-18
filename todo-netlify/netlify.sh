@@ -16,6 +16,19 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export HOME="$HERE/.fake-home"
 mkdir -p "$HOME"
 
+# 认证令牌：优先用环境变量，其次读本机的 .netlify-token（权限 600，已在 .gitignore 排除）
+# 这样脚本里不会出现任何硬编码凭据，换台机器时把文件放回来即可。
+if [ -z "${NETLIFY_AUTH_TOKEN:-}" ] && [ -f "$HERE/.netlify-token" ]; then
+  NETLIFY_AUTH_TOKEN="$(tr -d '[:space:]' < "$HERE/.netlify-token")"
+  export NETLIFY_AUTH_TOKEN
+fi
+
+# 站点 ID：netlify-cli 17.x 的 env:* / blobs:* 子命令只认 --site 之外的 SITE_ID 变量
+if [ -z "${NETLIFY_SITE_ID:-}" ] && [ -f "$HERE/.netlify/state.json" ]; then
+  NETLIFY_SITE_ID="$(sed -n 's/.*"siteId":"\([^"]*\)".*/\1/p' "$HERE/.netlify/state.json")"
+  export NETLIFY_SITE_ID
+fi
+
 # 优先用本地安装的 netlify-cli，其次回退到全局命令
 if [ -x "$HERE/node_modules/.bin/netlify" ]; then
   exec "$HERE/node_modules/.bin/netlify" "$@"

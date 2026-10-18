@@ -260,6 +260,11 @@ cd todo-server && node server.js
 
 删除 `data.json` 即可清空所有账号与待办。
 
+> ⚠️ **这个本地版是简化实现，只覆盖最早的注册/登录/增删待办。**
+> 编辑待办、撤销、统计、日历导出、管理员、邮箱绑定、邮件提醒**都只有
+> Netlify 生产版才有**（`todo-netlify/`）。要完整联调请改用
+> `node test-api-local.mjs`（在临时目录里跑真实 `api.js`，内存存储、无需部署）。
+
 ### 3.2 前端调试
 
 前端是单文件 `public/index.html`，改完直接部署或本地打开即可，**没有构建步骤**。
@@ -279,18 +284,38 @@ const API_BASE = window.__API_BASE__ || (SAME_ORIGIN ? "" : NETLIFY_API_BASE);
 
 ### 3.3 运行测试
 
-```bash
-# 接口测试（可指向任意后端）
-cd todo-deno && ./test.sh https://yuwann-todo.netlify.app
+**本地测试（不需要部署、不需要网络）**
 
+```bash
 cd todo-netlify
-node test-heatmap.mjs    # 24 项：热力图日期归组、颜色分级、连续天数
-node test-notify.mjs     # 26 项：提醒判定、去重、重试、边界
-node test-smtp.mjs       # 18 项：SMTP 协议、邮件报文构造（用本地假服务器，无需真实凭据）
+node test-stats.mjs        # 21 项：统计计算（时区切天、准时率、连续天数、分布）
+node test-ics.mjs          # 15 项：日历生成（结构、转义、75 字节折行、UTC 时间）
+node test-notify.mjs       # 72 项：多级提醒（三档、逐档升级、跳档、旧数据兼容、重试）
+node test-api-local.mjs    # 27 项：真实 api.js 全部路由（内存版 Blobs）
+node test-ui-logic.mjs     # 22 项：前端内联脚本（统计渲染、撤销提示、颜色分档）
+node test-heatmap.mjs      # 24 项：热力图日期归组、颜色分级、连续天数
+node test-smtp.mjs         # 18 项：SMTP 协议、邮件报文构造（本地假服务器，无需真实凭据）
 ```
 
-`test-heatmap.mjs` 的特点是**直接从 `index.html` 提取真实函数**来测，
-不是测一份副本，因此能真实反映线上逻辑。
+几个测试的特别之处：
+
+| 脚本 | 做法 |
+|---|---|
+| `test-api-local.mjs` | 把 `api.js` 与 `lib/` 复制到临时目录，放一个**内存版 `@netlify/blobs`** 替身（Node 逐级向上找 `node_modules`），于是能在本机打真实路由 |
+| `test-ui-logic.mjs` / `test-heatmap.mjs` | 用最小 DOM 替身 / 从 `index.html` 提取真实函数来测，不是测副本 |
+| `test-notify.mjs` | 用模拟存储 + 模拟邮件器，**不会真的发信** |
+
+**对已部署后端做接口验收**
+
+```bash
+cd todo-netlify
+./test-features.sh https://<预览地址>--yuwann-todo.netlify.app   # 撤销/统计/日历/编辑，56 项
+cd ../todo-deno
+./test.sh https://yuwann-todo.netlify.app                       # 注册/登录/增删/隔离/同步，23 项
+```
+
+两个脚本都会注册临时账号（`feat<时间戳>` / `deno<时间戳>`），只操作自己的数据，
+不影响真实用户；跑完可在管理员后台手动清理。
 
 ---
 
@@ -583,7 +608,7 @@ grep -n 'store.get\|\.get(key' todo-netlify/netlify/functions/api.js   # 都应�
 | 凭据 | 存放位置 | 备注 |
 |---|---|---|
 | **GitHub 访问令牌** | 本地 `.github-token`（权限 600，已被 `.gitignore` 忽略） | 用于 `git push`。**不要提交到仓库** |
-| Netlify 个人访问令牌 | 使用者的环境变量或密码管理器 | 用于部署与数据管理 |
+| **Netlify 个人访问令牌** | 本地 `todo-netlify/.netlify-token`（权限 600，已被 `.gitignore` 忽略）；`netlify.sh` 会自动读取并导出为 `NETLIFY_AUTH_TOKEN` | 用于部署与数据管理 |
 | QQ 邮箱授权码 | Netlify 环境变量 | 仅用于发信，可随时在 QQ 邮箱作废 |
 | `ADMIN_SECRET` | Netlify 环境变量 + 本地 `.admin-secret` | 保护管理员初始化接口 |
 | `NOTIFY_SECRET` | Netlify 环境变量 + 本地 `.notify-secret` | 保护手动触发接口 |
@@ -597,6 +622,37 @@ grep -n 'store.get\|\.get(key' todo-netlify/netlify/functions/api.js   # 都应�
 > git -c http.extraHeader="Authorization: Basic $AUTH" push origin main
 > ```
 
+### Netlify 令牌的保存与恢复（2026-10-18 踩过的坑）
+
+**现象**：`./netlify.sh deploy` 报
+
+```
+Error: Unauthorized: could not retrieve site
+```
+
+`.fake-home/` 里只有 `cliId`，没有用户令牌 —— 因为此前几次部署都是在命令行里临时
+带 `NETLIFY_AUTH_TOKEN=xxx` 完成的，**shell 一关令牌就没了**。
+
+**现在的做法**（已写进 `netlify.sh`，无需手动 export）：
+
+```bash
+# 1) 令牌存文件，权限 600，已在 .gitignore 第三步排除
+cd todo-netlify
+printf '%s\n' '你的 Netlify 个人访问令牌' > .netlify-token
+chmod 600 .netlify-token
+
+# 2) 之后直接用包装脚本，它会自动读取
+./netlify.sh status     # 验证身份
+./netlify.sh deploy --dir=public --functions=netlify/functions --site=yuwann-todo
+```
+
+`netlify.sh` 还会从 `.netlify/state.json` 提取 `NETLIFY_SITE_ID` 并导出 ——
+因为 `env:*` / `blobs:*` 子命令**只认这个变量，不认 `--site` 参数**。
+
+> 📌 **教训：凡靠"临时环境变量"的凭据，一定会丢。** 要么放进文件由脚本读取，
+> 要么放进系统钥匙串。令牌申请/作废入口：
+> https://app.netlify.com/user/applications#personal-access-tokens
+
 ### 安全建议
 
 1. **GitHub 令牌按最小权限原则申请**
@@ -607,10 +663,10 @@ grep -n 'store.get\|\.get(key' todo-netlify/netlify/functions/api.js   # 都应�
 2. **Netlify 令牌用完即删**
    删除入口：https://app.netlify.com/user/applications#personal-access-tokens
 
-2. **令牌不要写进代码或提交到仓库**
-   本项目所有脚本都通过环境变量读取，不要改成硬编码。
+3. **令牌不要写进代码或提交到仓库**
+   本项目所有脚本都通过环境变量或本机凭据文件读取，不要改成硬编码。
 
-3. **工作区根目录已配好 `.gitignore`**
+4. **工作区根目录已配好 `.gitignore`**
    已忽略 `.notify-secret`、`data.json`（本地版明文数据库）、`.fake-home/`、
    `.npm-cache/`、`.netlify-home/`、`unpackage/cache|release/`、`node_modules/` 等。
 

@@ -11,7 +11,7 @@
 | 项目 | 约定 |
 |---|---|
 | 请求体 | JSON，需带 `Content-Type: application/json` |
-| 响应体 | JSON，`Content-Type: application/json; charset=utf-8` |
+| 响应体 | JSON，`Content-Type: application/json; charset=utf-8`（**唯一例外**：`/api/calendar.ics` 返回 `text/calendar`） |
 | 认证方式 | 请求头 `Authorization: Bearer <token>` |
 | 跨域 | 所有响应带 `Access-Control-Allow-Origin: *`，允许 App 与 GitHub Pages 调用 |
 | 缓存 | 响应带 `Cache-Control: no-store` |
@@ -27,7 +27,7 @@
 | `401` | 未登录 / 登录已失效 | 清除本地 token，回到登录页 |
 | `403` | 无权限（仅手动触发接口） | 提示无权限 |
 | `404` | 资源不存在 | 提示该对象不存在 |
-| `409` | 冲突（用户名已被注册） | 提示换一个用户名 |
+| `409` | 冲突（用户名已被注册 / 撤销时待办已存在） | 提示换一个用户名；撤销冲突时刷新列表即可 |
 | `500` | 服务端异常 | 提示稍后重试 |
 | `503` | **存储服务暂时不可用** | 提示稍后重试；**不要**清除登录态 |
 
@@ -235,6 +235,8 @@ Authorization: Bearer <token>
       "deadline": 1790046600000,
       "created": 1789873848395,
       "notified": true,
+      "notifiedStages": ["3d", "1d"],
+      "notifiedStage": "1d",
       "notifiedAt": 1790062898158
     }
   ]
@@ -247,8 +249,24 @@ Authorization: Bearer <token>
 | `text` | string | 待办内容，最长 500 字符 |
 | `deadline` | number | 截止时间（毫秒时间戳） |
 | `created` | number | 创建时间（毫秒时间戳） |
-| `notified` | boolean? | 是否已发过提醒邮件（未发过则无此字段） |
-| `notifiedAt` | number? | 提醒发送时间 |
+| `updatedAt` | number? | 最后一次编辑时间（没编辑过则无此字段） |
+| `notifiedStages` | string[]? | **已发过的提醒档位**，取值 `3d` / `1d` / `overdue` |
+| `notifiedStage` | string? | 最后一次发的是哪一档 |
+| `notified` | boolean? | 兼容字段：任一一档发过即为 `true` |
+| `notifiedAt` | number? | 最后一次提醒的发送时间 |
+
+**多级提醒的档位**
+
+| 档位 | 触发条件（距截止） | 邮件主题 | 每档次数 |
+|---|---|---|---|
+| `3d` | ≤ 3 天 | ⏳ 待办还有 3 天到期 | 1 次 |
+| `1d` | ≤ 1 天 | ⏰ 待办即将到期 | 1 次 |
+| `overdue` | < 0（已超时） | ⚠️ 待办已超时 | 1 次 |
+
+- 定时任务每 15 分钟扫一遍；**跳档不补发**——待办直接从「剩 5 天」跳到
+  「已超时」时只发超时这一封，同时把前两档一起写进 `notifiedStages`
+- 旧数据只有 `notified: true` 时，视为 `["3d","1d"]` 已发，升级后不会补发
+- 改截止时间会清空全部档位（见 3.4）
 
 列表**不保证排序**，排序由前端完成（支持按剩余时间升/降序、按创建顺序）。
 
@@ -314,12 +332,20 @@ Authorization: Bearer <token>
 {
   "ok": true,
   "todos": [ /* 删除后的完整列表 */ ],
-  "completionRecorded": true
+  "completionRecorded": true,
+  "completedTodo": { "id": "a79b3c1d2e4f5a6b7c", "text": "提交周报", "deadline": 1790046600000, "created": 1789873848395 },
+  "completionId": "3f8a1c2d9e40"
 }
 ```
 
-`completionRecorded` 表示完成历史是否写入成功。即使历史写入失败，待办本身也已删除，
-接口仍返回 200（历史记录失败不影响「完成」这个动作本身）。
+| 字段 | 说明 |
+|---|---|
+| `completionRecorded` | 完成历史是否写入成功。即使写入失败，待办本身也已删除，接口仍返回 200 |
+| `completedTodo` | 被删除的那条待办的完整快照，**供「撤销」使用** |
+| `completionId` | 本次写入的完成记录 id，撤销时用它精确回滚；写入失败时为 `null` |
+
+> 前端拿到 `completedTodo` 与 `completionId` 后会在底部弹出 10 秒的撤销提示条，
+> 点击「撤销」即调用 `POST /api/todos/restore`。
 
 **错误响应**
 
@@ -368,10 +394,10 @@ Authorization: Bearer <token>
 
 #### ⚠️ 提醒状态的特殊处理（重要）
 
-| 改动内容 | 对 `notified` 的影响 | 原因 |
+| 改动内容 | 对提醒状态的影响 | 原因 |
 |---|---|---|
-| **只改 `text`** | **保留** | 避免收到重复的提醒邮件 |
-| **改了 `deadline`** | **清除**（连同 `notifiedAt`） | 旧的提醒已失效，应按新时间重新提醒 |
+| **只改 `text`** | **保留** `notifiedStages` / `notifiedStage` / `notifiedAt` | 避免收到重复的提醒邮件 |
+| **改了 `deadline`** | **全部清除**（含旧字段 `notified`） | 旧的提醒已失效，应按新时间重新走完三档 |
 
 这条规则已在代码中实现并有注释说明，修改此接口时**务必保持该行为**。
 
@@ -387,9 +413,66 @@ Authorization: Bearer <token>
 > CORS 已允许 `PATCH` 方法（`Access-Control-Allow-Methods` 含 PATCH），
 > 安卓 App 与 GitHub Pages 均可正常调用。
 
+### 3.5 撤销「已完成」
+
+```
+POST /api/todos/restore
+Authorization: Bearer <token>
+```
+
+把误标为「已完成」的待办放回列表，并**回滚对应的完成记录**。
+
+**请求体**
+
+```json
+{
+  "todo": {
+    "id": "a79b3c1d2e4f5a6b7c",
+    "text": "提交周报",
+    "deadline": 1790046600000,
+    "created": 1789873848395
+  },
+  "completionId": "3f8a1c2d9e40"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `todo.id` | 是 | 1–32 位字母数字（`[A-Za-z0-9]+`），沿用原 id |
+| `todo.text` | 是 | 去空格后不能为空，超过 500 字符截断 |
+| `todo.deadline` | 是 | 有限数字（毫秒时间戳） |
+| `todo.created` | 否 | 缺失时用当前时间 |
+| `completionId` | 否 | 传了才会回滚完成记录；不传只放回待办 |
+
+**成功响应 `200`**
+
+```json
+{
+  "ok": true,
+  "todo": { "id": "...", "text": "提交周报", "deadline": 1790046600000, "created": 1789873848395, "updatedAt": 1790062898158 },
+  "todos": [ /* 恢复后的完整列表 */ ],
+  "completionRolledBack": true
+}
+```
+
+`completionRolledBack` 为 `true` 表示完成记录确实被删掉了（热力图与统计会同步变化）。
+
+**错误响应**
+
+| 状态码 | error | 场景 |
+|---|---|---|
+| `400` | `请求格式有误` / `缺少待办数据` / `待办内容不能为空` / `截止时间无效` / `待办 id 不合法` | 参数不合法 |
+| `401` | `未登录或登录已失效` | 未登录 |
+| `409` | `该待办已存在` | 同 id 的待办已在列表里（例如另一台设备也撤销过） |
+| `503` | `存储服务暂时不可用，请稍后重试` | 存储异常 |
+
+> ⚠️ **为什么必须回滚完成记录**：热力图的格子数、统计页的完成数与准时率都读
+> `completions:*`。只把待办放回列表而不删记录，会留下一条"其实没完成"的记录，
+> 数据会慢慢变脏且极难发现。前端遇到 `409` 时会自动刷新列表，不会重复插入。
+
 ---
 
-## 四、完成历史（热力图数据源）
+## 四、完成历史与统计
 
 ### 4.1 获取完成历史
 
@@ -415,6 +498,7 @@ Authorization: Bearer <token>
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
+| `id` | string | 完成记录 id（12 位随机串），撤销时用于精确回滚 |
 | `text` | string | 完成时的待办内容，最长 200 字符 |
 | `at` | number | 完成时间（毫秒时间戳） |
 | `deadline` | number \| null | 该待办原本的截止时间 |
@@ -424,8 +508,123 @@ Authorization: Bearer <token>
 
 - **上限 3000 条**，超出后自动丢弃最旧的记录
 - 按 `at` 升序排列（即时间从早到晚）
-- 前端按**本地时区**把 `at` 归入 `YYYY-MM-DD` 再统计——服务端不做日期聚合，
-  否则跨时区会把凌晨完成的任务归错天
+- 前端热力图按**本地时区**把 `at` 归入 `YYYY-MM-DD`；
+  统计接口（4.2）则由服务端按时区参数聚合，两者口径一致
+
+### 4.2 完成统计
+
+```
+GET /api/stats?days=90&tz=480
+Authorization: Bearer <token>
+```
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `days` | `90` | 统计窗口天数，取值 1–365，越界会被夹住 |
+| `tz` | `480` | 客户端时区：**比 UTC 快多少分钟**（北京 = 480） |
+
+> ⚠️ `tz` 不是 JS 的 `getTimezoneOffset()` 返回值。北京时
+> `getTimezoneOffset()` 返回 `-480`，前端要传 `-getTimezoneOffset()` 才是 `480`。
+> 传错方向会让所有"天"整体错位，而且白天测试完全看不出来。
+
+**响应 `200`（节选，字段齐全）**
+
+```json
+{
+  "generatedAt": 1790062898158,
+  "tzMinutes": 480,
+  "days": 90,
+  "range": { "from": "2026-07-23", "to": "2026-10-20" },
+  "active": { "total": 5, "overdue": 1, "within1d": 1, "within3d": 1, "within7d": 1, "later": 1 },
+  "done": { "total": 12, "onTime": 9, "late": 3, "unknown": 0, "inRange": 8,
+            "onTimeRate": 0.75, "lateRate": 0.25 },
+  "streak": { "current": 3, "longest": 6, "activeDays": 5,
+              "bestDay": { "date": "2026-10-18", "count": 4 } },
+  "daily": [ { "date": "2026-07-23", "count": 2, "onTime": 2, "late": 0 } ],
+  "weekly": [ { "weekStart": "2026-10-19", "count": 3 } ],
+  "weekday": [0, 1, 2, 3, 4, 5, 6],
+  "hourly": [0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0],
+  "average": { "perDayInRange": 0.27, "perActiveDay": 1.6,
+               "busiestWeekday": 4, "busiestHour": 21 },
+  "lead": { "count": 3, "averageMs": 172800000, "medianMs": 86400000 }
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `active.*` | 进行中待办按剩余时间分档：已超时 / ≤24h / ≤3d / ≤7d / 更远 |
+| `done.total` | 累计完成记录条数（最多 3000） |
+| `done.inRange` | 统计窗口内的完成数 |
+| `done.onTimeRate` | 准时率 = `onTime / (onTime + late)`；无数据时为 `null` |
+| `done.unknown` | 缺 `deadline` 的早期记录，不计入准时率 |
+| `streak.current` | 当前连续完成天数（今天没完成时从昨天往前算，不清零） |
+| `streak.longest` | 历史最长连续天数（跨出统计窗口也能算对） |
+| `streak.bestDay` | 单日最高记录；没有记录时为 `null` |
+| `daily` | 长度 = `days`，从早到晚；`daily[-1]` 是今天 |
+| `weekly` | 按自然周（周一为首日）聚合 |
+| `weekday` / `hourly` | 窗口内完成数的分布，下标 0 = 周日 / 0 点 |
+| `average.busiestWeekday` / `busiestHour` | 最忙的星期与时段；无数据为 `null` |
+| `lead` | 未完成待办的「创建 → 截止」时长统计（计划提前量） |
+
+**错误响应**：`401 未登录或登录已失效` / `503 存储服务暂时不可用`
+
+---
+
+## 四·补、导出到日历（`.ics`）
+
+### 4.补.1 导出待办
+
+```
+GET /api/calendar.ics?tz=480&alarms=1
+Authorization: Bearer <token>
+```
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `tz` | `480` | 只影响文件里的文字说明（时间本身用 UTC 表示） |
+| `alarms` | `1` | 传 `0` 可去掉「提前 1 天」的提醒 |
+
+**响应 `200`**
+
+```
+Content-Type: text/calendar; charset=utf-8
+Content-Disposition: attachment; filename="todos.ics"; filename*=UTF-8''%E5%BE%85%E5%8A%9E.ics
+```
+
+```ics
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Yuwann Todo//Todo Due Calendar//CN
+X-WR-CALNAME:我的待办
+BEGIN:VEVENT
+UID:a79b3c1d2e4f5a6b7c@yuwann-todo
+DTSTAMP:20261020T070000Z
+DTSTART:20261021T113000Z
+DTEND:20261021T120000Z
+SUMMARY:提交周报
+DESCRIPTION:截止时间：2026-10-21 20:00
+TRANSP:OPAQUE
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:待办还有不到 1 天到期：提交周报
+TRIGGER:-P1D
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+```
+
+**设计要点**
+
+| 决定 | 原因 |
+|---|---|
+| 用 `VEVENT` 而不是 `VTODO` | `VTODO` 是待办的标准表示，但 **Google 日历支持极差**（导入后常常什么都不显示）；`VEVENT` 在所有日历里都能正常导入 |
+| 每条待办 = 30 分钟日程，**结束时间 = 截止时间** | 日历里看到的时间就是截止时间，直观 |
+| 时间统一用 UTC（`...Z`） | 导入方会自动换算成当地时区，也不需要手写 `VTIMEZONE` 规则 |
+| 每行折行到 ≤ 75 **字节** | RFC 5545 的硬要求；中文一个字 3 字节，30 字标题必然超限，不折行部分日历会解析失败 |
+| `,` `;` `\` 换行做转义 | 否则一个逗号就能破坏整个文件结构 |
+| 前端用 `fetch` + `Blob` 下载 | 直接打开 URL 会丢 `Authorization` 头（401）；把 token 放查询串又会留在浏览器历史和访问日志里 |
+
+**错误响应**：`401 未登录或登录已失效` / `503 存储服务暂时不可用`
 
 ---
 
@@ -698,31 +897,53 @@ GET /
 ```
 Access-Control-Allow-Origin: *
 Access-Control-Allow-Headers: Content-Type, Authorization
-Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS
+Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS
 ```
 
 ---
 
 ## 九、测试
 
-项目自带一套接口测试脚本，会对**指定后端**跑 23 项断言：
+### 9.1 无需部署的本地测试（快，覆盖核心逻辑）
 
 ```bash
-cd todo-deno
-./test.sh https://yuwann-todo.netlify.app     # 测试线上
-./test.sh http://127.0.0.1:8123               # 测试本地
+cd todo-netlify
+node test-stats.mjs        # 统计计算：时区切天、准时率、连续天数、分布
+node test-ics.mjs          # 日历生成：结构、转义、75 字节折行、UTC 时间
+node test-notify.mjs       # 多级提醒：三档判定、逐档升级、跳档不补发、旧数据兼容
+node test-api-local.mjs    # 真实 api.js 全部路由（内存版 Blobs，无需 Netlify）
+node test-ui-logic.mjs     # 前端内联脚本：统计页渲染、撤销提示、颜色分档
+node test-heatmap.mjs      # 热力图逻辑
 ```
+
+`test-api-local.mjs` 的做法值得一提：它把 `api.js` 与 `lib/` 复制到临时目录，
+再放一个**内存版 `@netlify/blobs`** 替身（Node 会逐级向上查找 `node_modules`），
+于是能在本机直接打真实路由，完全不需要部署或网络。
+
+### 9.2 对已部署后端跑接口验收
+
+```bash
+cd todo-netlify
+./test-features.sh https://<预览地址>--yuwann-todo.netlify.app   # 撤销/统计/日历/编辑
+cd ../todo-deno
+./test.sh https://yuwann-todo.netlify.app                       # 注册/登录/增删/隔离/同步
+```
+
+两个脚本都会注册临时账号（`feat<时间戳>` / `deno<时间戳>`），只操作自己的数据，
+不会碰到真实用户。
 
 覆盖内容：
 
 | 分组 | 断言 |
 |---|---|
-| 注册 | 返回 token、重复注册 409、弱密码 400、非法用户名 400 |
-| 登录 | 密码错误 401、用户不存在 401、正确密码 200、`me` 返回正确用户名 |
-| 待办增删查 | 新增返回 id、列表 1 条、空文本 400、无效时间 400、删除 200、删除后 0 条、删除不存在 404 |
+| 注册 / 登录 | 返回 token、重复注册 409、弱密码 400、非法用户名 400、密码错误 401、`me` 返回正确用户名 |
+| 待办增删查 | 新增返回 id、列表数量、空文本 400、无效时间 400、删除 200、删除不存在 404 |
+| **撤销完成** | 返回 `completedTodo`/`completionId`、待办回到列表、完成记录回滚、重复撤销 409、非法参数 400、不带 id 也能放回 |
+| **统计** | 空账号初始值、`days`/`tz` 参数生效、完成后准时率与连续天数变化、撤销后回落 |
+| **日历导出** | `Content-Type`、空账号合法、事件数与标题、`VALARM` 开关、CRLF 行尾、无超过 75 字节的行 |
+| 编辑待办 | 改名、改时间、`updatedAt`、空文本 400、不存在 404 |
 | 鉴权安全 | 无 token 401、伪造 token 401、登出后旧 token 失效 401 |
-| 多用户隔离 | A 的数据 B 看不到 |
-| 跨设备同步 | 两个会话 token 不同、设备 B 能看到设备 A 的改动与删除 |
+| 多用户隔离 / 跨设备同步 | A 的数据 B 看不到；两个会话 token 不同、设备间改动互相可见 |
 
 ---
 

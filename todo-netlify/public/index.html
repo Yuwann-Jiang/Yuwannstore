@@ -346,6 +346,111 @@
   }
   .btn-save:hover:not(:disabled) { background: var(--primary-hover); }
   .btn-save:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* ---------- 快捷操作（统计 / 导出日历） ---------- */
+  .quick-actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
+  .qa-btn {
+    flex: 1 1 0; min-width: 132px;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 11px 14px; font-size: 14px; font-family: inherit; color: var(--text);
+    cursor: pointer; transition: border-color .12s, background .12s, color .12s;
+  }
+  .qa-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: #fafbff; }
+  .qa-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+  /* ---------- 底部浮层提示（撤销 / 导出结果） ---------- */
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 20px; bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 14px));
+    display: flex; align-items: center; gap: 12px;
+    background: #1f2933; color: #fff; border-radius: 11px;
+    padding: 12px 13px; font-size: 13.5px; line-height: 1.4;
+    box-shadow: 0 8px 26px rgba(16, 24, 40, .3);
+    max-width: min(560px, calc(100vw - 28px));
+    z-index: 60; animation: toast-in .18s ease;
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translate(-50%, 12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+  .toast-text { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+  .toast-btn {
+    flex: 0 0 auto; background: rgba(255, 255, 255, .17); color: #fff; border: none;
+    border-radius: 8px; padding: 7px 13px; font-size: 13px; font-weight: 600;
+    font-family: inherit; cursor: pointer;
+  }
+  .toast-btn:hover:not(:disabled) { background: rgba(255, 255, 255, .3); }
+  .toast-btn:disabled { opacity: .6; cursor: not-allowed; }
+  .toast-close {
+    flex: 0 0 auto; background: transparent; border: none; color: rgba(255, 255, 255, .6);
+    font-size: 13px; line-height: 1; cursor: pointer; padding: 3px 2px;
+  }
+  .toast-close:hover { color: #fff; }
+
+  /* ---------- 统计页 ---------- */
+  .stats-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+  }
+  .stats-title { font-size: 20px; font-weight: 600; }
+  .stats-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+  .range-tabs { display: flex; gap: 7px; margin-bottom: 16px; flex-wrap: wrap; }
+  .range-tabs button {
+    background: #f1f3f8; border: 1px solid transparent; border-radius: 8px;
+    padding: 7px 14px; font-size: 13px; font-family: inherit; color: var(--muted);
+    cursor: pointer; transition: background .12s, color .12s;
+  }
+  .range-tabs button:hover { color: var(--text); }
+  .range-tabs button.active { background: var(--primary); color: #fff; font-weight: 600; }
+
+  .stat-cards {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+  }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px;
+  }
+  .stat-card .v { font-size: 22px; font-weight: 700; line-height: 1.2; }
+  .stat-card .v.small { font-size: 16.5px; }
+  .stat-card .l { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  .stat-card .x {
+    font-size: 11.5px; color: var(--muted); margin-top: 7px;
+    padding-top: 7px; border-top: 1px dashed var(--border); line-height: 1.45;
+  }
+  .c-green { color: var(--green); }
+  .c-red { color: var(--red); }
+  .c-yellow { color: #b45309; }
+  .c-primary { color: var(--primary); }
+
+  .stats-block {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 15px; margin-bottom: 14px;
+  }
+  .stats-block-title { font-size: 14px; font-weight: 600; }
+  .stats-block-sub { font-size: 12px; color: var(--muted); margin-top: 3px; margin-bottom: 12px; }
+
+  .cols { display: flex; align-items: flex-end; }
+  .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .col .cv { font-size: 9.5px; color: var(--muted); height: 11px; line-height: 11px; white-space: nowrap; }
+  .col .cb { width: 100%; border-radius: 3px 3px 0 0; background: #e3e7f6; min-height: 2px; }
+  .col .cb.has { background: var(--primary); }
+  .col .cb.bad { background: var(--red); }
+  .col .cb.good { background: var(--green); }
+  .col .cl { font-size: 9.5px; color: var(--muted); white-space: nowrap; height: 12px; line-height: 12px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #f7f8fc; border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 13px; font-size: 12.5px; color: var(--muted);
+  }
+  .chip b { color: var(--text); font-size: 13.5px; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  .stats-empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 26px 0; }
 </style>
 </head>
 <body>
@@ -413,7 +518,7 @@
         <button class="btn-ghost" id="emailCancel" type="button">取消</button>
       </div>
       <div class="msg" id="emailMsg"></div>
-      <p class="ehint">待办剩余时间低于 1 天时，会自动往这个邮箱发一封提醒邮件（每条待办只提醒一次）。</p>
+      <p class="ehint">提醒分三档：剩余 3 天、剩余 1 天、已超时，各发一封邮件（同一档不会重复发）。改过截止时间后会按新时间重新计算。</p>
     </div>
 
     <div class="legend">
@@ -456,6 +561,12 @@
     <div id="empty" class="empty">暂无待办事项，从上方添加一条吧。</div>
     <ul class="list" id="list"></ul>
 
+    <!-- 快捷操作：统计页 / 导出到日历 -->
+    <div class="quick-actions">
+      <button class="qa-btn" id="statsBtn" type="button">📊 统计</button>
+      <button class="qa-btn" id="exportBtn" type="button">📅 导出日历</button>
+    </div>
+
     <!-- ================= 完成热力图 ================= -->
     <section class="hm-card">
       <div class="hm-head">
@@ -488,6 +599,55 @@
     </section>
   </section>
 
+  <!-- ================= 统计页 ================= -->
+  <section id="statsView" class="hidden">
+    <div class="stats-head">
+      <div>
+        <div class="stats-title">📊 统计</div>
+        <div class="stats-sub" id="statsSub">正在加载…</div>
+      </div>
+      <button class="btn-ghost" id="statsBack" type="button">← 返回待办</button>
+    </div>
+
+    <div class="range-tabs" id="rangeTabs">
+      <button type="button" data-days="30">近 30 天</button>
+      <button type="button" data-days="90" class="active">近 90 天</button>
+      <button type="button" data-days="365">近一年</button>
+    </div>
+
+    <div class="stat-cards" id="statCards"></div>
+
+    <div class="stats-block">
+      <div class="stats-block-title">每日完成量</div>
+      <div class="stats-block-sub" id="dailySub">-</div>
+      <div class="cols" id="dailyCols"></div>
+    </div>
+
+    <div class="stats-block">
+      <div class="stats-block-title">每周完成量</div>
+      <div class="stats-block-sub">按自然周（周一为一周起点）统计</div>
+      <div class="cols" id="weeklyCols"></div>
+    </div>
+
+    <div class="stats-block">
+      <div class="stats-block-title">星期分布</div>
+      <div class="stats-block-sub" id="weekdaySub">看看你在一周里哪天最勤快</div>
+      <div class="cols" id="weekdayCols"></div>
+    </div>
+
+    <div class="stats-block">
+      <div class="stats-block-title">时段分布</div>
+      <div class="stats-block-sub" id="hourlySub">看看你通常在几点把事情做完</div>
+      <div class="cols" id="hourlyCols"></div>
+    </div>
+
+    <div class="stats-block">
+      <div class="stats-block-title">当前待办的时间分布</div>
+      <div class="stats-block-sub">按剩余时间分档，帮你判断现在该先做哪些</div>
+      <div class="chips" id="activeChips"></div>
+    </div>
+  </section>
+
   <!-- ================= 管理后台（仅管理员可见） ================= -->
   <section id="adminView" class="hidden">
     <div class="admin-head">
@@ -508,6 +668,13 @@
 
     <div class="admin-detail hidden" id="adminDetail"></div>
   </section>
+</div>
+
+<!-- 底部浮层提示：完成待办后可撤销，也可用来显示导出结果 -->
+<div class="toast hidden" id="toast" role="status" aria-live="polite">
+  <span class="toast-text" id="toastText"></span>
+  <button class="toast-btn hidden" id="toastAction" type="button">撤销</button>
+  <button class="toast-close" id="toastClose" type="button" aria-label="关闭">✕</button>
 </div>
 
 <script>
@@ -543,6 +710,49 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // ---------------------------------------------------------------- 浮层提示
+  // 一个组件两处用：完成待办后的「撤销」按钮，以及导出日历的结果提示。
+  // 之所以不用 alert()：撤销需要"顺手点一下"，弹窗会打断操作，而且手机上很难看。
+  let toastTimer = null;
+  let toastHandler = null;
+
+  function showToast(text, opts = {}) {
+    $("toastText").textContent = text;
+    toastHandler = typeof opts.onAction === "function" ? opts.onAction : null;
+
+    const action = $("toastAction");
+    if (opts.actionLabel && toastHandler) {
+      action.textContent = opts.actionLabel;
+      action.disabled = false;
+      action.classList.remove("hidden");
+    } else {
+      action.classList.add("hidden");
+    }
+
+    $("toast").classList.remove("hidden");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, opts.ms || 8000);
+  }
+
+  function hideToast() {
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+    toastHandler = null;
+    const action = $("toastAction");
+    if (action) { action.disabled = false; action.classList.add("hidden"); }
+    $("toast").classList.add("hidden");
+  }
+
+  function runToastAction() {
+    const fn = toastHandler;
+    if (fn) fn();
+  }
+
+  // 截断过长的标题，避免提示条被挤爆
+  function shorten(s, n) {
+    const str = String(s || "");
+    return str.length > n ? str.slice(0, n) + "…" : str;
+  }
+
   // ---------------------------------------------------------------- 网络
   async function api(path, options = {}) {
     const headers = Object.assign({}, options.headers || {});
@@ -565,6 +775,7 @@
   function showApp() {
     $("authView").classList.add("hidden");
     $("appView").classList.remove("hidden");
+    $("statsView").classList.add("hidden");
     $("currentUser").textContent = username;
     $("avatar").textContent = username.slice(0, 1).toUpperCase();
     $("emailFormWrap").classList.add("hidden");
@@ -803,16 +1014,83 @@
 
   async function completeTodo(id) {
     const li = document.querySelector(`.item[data-id="${id}"]`);
+    // 先留一份快照：万一服务端没回传 completedTodo，也能用它来撤销
+    const snapshot = todos.find((t) => t.id === id) || null;
     if (li) li.classList.add("removing");
-    const { status } = await api("/api/todos/" + id, { method: "DELETE" });
+
+    const { status, data } = await api("/api/todos/" + id, { method: "DELETE" });
     if (status === 200) {
-      todos = todos.filter((t) => t.id !== id);
+      todos = Array.isArray(data.todos) ? data.todos : todos.filter((t) => t.id !== id);
+      saveLocalCache(todos);
       render();
       // 完成后刷新热力图，让新记录立刻体现出来
       loadCompletions(true);
+
+      // 误点很常见（尤其手机上），给一个 10 秒内可撤销的提示。
+      // 撤销会同时回滚服务端的完成记录，热力图与统计不受影响。
+      const undoable = data.completedTodo || snapshot;
+      if (undoable && undoable.text) showUndo(undoable, data.completionId || null);
     } else {
       if (li) li.classList.remove("removing");
     }
+  }
+
+  // ---------------- 撤销「已完成」 ----------------
+  let undoState = null;
+
+  function showUndo(todo, completionId) {
+    undoState = { todo, completionId };
+    showToast("已完成「" + shorten(todo.text, 16) + "」", {
+      actionLabel: "撤销",
+      onAction: undoComplete,
+      ms: 10000,
+    });
+  }
+
+  async function undoComplete() {
+    if (!undoState) { hideToast(); return; }
+
+    const { todo, completionId } = undoState;
+    const btn = $("toastAction");
+    btn.disabled = true;
+    btn.textContent = "撤销中…";
+
+    const { status, data } = await api("/api/todos/restore", {
+      method: "POST",
+      body: JSON.stringify({ todo, completionId }),
+    });
+
+    if (status === 200) {
+      undoState = null;
+      hideToast();
+      if (Array.isArray(data.todos)) {
+        todos = data.todos;
+        saveLocalCache(todos);
+        render();
+      } else {
+        await loadTodos();
+      }
+      // 完成记录被回滚了 → 热力图也要重画
+      loadCompletions(true);
+      setSyncState(data.completionRolledBack ? "已撤销，完成记录也一起回滚了" : "已撤销，待办已放回列表");
+      return;
+    }
+
+    // 409：这条待办已经在列表里了（例如另一台设备也点过撤销），刷新即可
+    if (status === 409) {
+      undoState = null;
+      hideToast();
+      await loadTodos();
+      setSyncState("这条待办已经在列表里了");
+      return;
+    }
+
+    // 其它错误：保留撤销状态，允许再点一次
+    showToast("撤销失败：" + ((data && data.error) || "请稍后重试"), {
+      actionLabel: "重试",
+      onAction: undoComplete,
+      ms: 8000,
+    });
   }
 
   // =====================================================================
@@ -1073,8 +1351,11 @@
     // 退出时清掉管理员状态，避免下一个登录者看到残留入口
     isAdmin = false;
     adminUsers = [];
+    undoState = null;
+    hideToast();
     $("adminBtn").classList.add("hidden");
     $("adminView").classList.add("hidden");
+    $("statsView").classList.add("hidden");
     showAuth();
   }
 
@@ -1211,6 +1492,283 @@
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  // =====================================================================
+  // 统计页
+  //
+  // 数据由服务端 /api/stats 计算（见 lib/stats.js）。为什么不在这里算：
+  //   - 时区。服务端用 UTC，前端把"比 UTC 快多少分钟"传过去，
+  //     统一由一处决定"哪天算哪天"，热力图和统计页才不会对不上。
+  //   - 一份逻辑，网页版 / 原生 App / 以后的小程序都能复用同一套接口。
+  // =====================================================================
+  let statsDays = 90;
+
+  function openStats() {
+    $("appView").classList.add("hidden");
+    $("statsView").classList.remove("hidden");
+    loadStats();
+  }
+
+  function closeStats() {
+    $("statsView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+  }
+
+  async function loadStats() {
+    $("statsSub").textContent = "正在加载…";
+    // getTimezoneOffset 返回的是相反数（北京返回 -480），所以取负
+    const tz = -new Date().getTimezoneOffset();
+    const { status, data } = await api("/api/stats?days=" + statsDays + "&tz=" + tz);
+    if (status === 200) {
+      renderStats(data);
+      return;
+    }
+    $("statsSub").textContent = (data && data.error) || "统计加载失败，请稍后重试";
+  }
+
+  function fmtPct(v) {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    return Math.round(v * 100) + "%";
+  }
+
+  function fmtDuration(ms) {
+    if (ms === null || ms === undefined || !isFinite(ms)) return "—";
+    const d = ms / DAY_MS;
+    if (d >= 1) return (Math.round(d * 10) / 10) + " 天";
+    const h = ms / 3600000;
+    if (h >= 1) return (Math.round(h * 10) / 10) + " 小时";
+    return Math.round(ms / 60000) + " 分钟";
+  }
+
+  // 通用的柱状图渲染：每个柱子 = 一根竖条 + 顶部数值 + 底部标签
+  function renderCols(el, items, opts = {}) {
+    if (!el) return;
+    const max = Math.max(1, ...items.map((x) => x.v));
+    const h = opts.height || 64;
+    el.style.gap = items.length > 60 ? "1px" : "4px";
+    el.innerHTML = items
+      .map((x) => {
+        const height = Math.round((x.v / max) * h);
+        const cls = x.cls || (x.v ? "has" : "");
+        return (
+          '<div class="col">' +
+          '<span class="cv">' + (opts.showValue && x.v ? x.v : "") + "</span>" +
+          '<div class="cb ' + cls + '" style="height:' + height + 'px" title="' +
+          escapeHtml(x.tip || "") + '"></div>' +
+          '<span class="cl">' + escapeHtml(x.label || "") + "</span>" +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+  function renderStats(s) {
+    const d = s.done;
+    const a = s.active;
+
+    $("statsSub").textContent =
+      s.range.from + " 至 " + s.range.to + "（" + s.days + " 天）";
+
+    // ---------------- 关键指标 ----------------
+    const rate = d.onTimeRate;
+    const cards = [
+      {
+        v: d.total,
+        l: "累计完成（全部）",
+        cls: "c-primary",
+        x: "这段时间里完成 " + d.inRange + " 项",
+      },
+      {
+        v: fmtPct(rate),
+        l: "准时完成率",
+        cls: rate === null ? "" : rate >= 0.8 ? "c-green" : rate >= 0.5 ? "c-yellow" : "c-red",
+        x: "按时 " + d.onTime + " · 超时 " + d.late + (d.unknown ? " · 早期记录 " + d.unknown : ""),
+      },
+      {
+        v: s.streak.current + " 天",
+        l: "当前连续完成",
+        cls: s.streak.current > 0 ? "c-green" : "",
+        x: "历史最长 " + s.streak.longest + " 天",
+      },
+      {
+        v: Math.round(s.average.perDayInRange * 10) / 10 + " 项",
+        l: "平均每天完成",
+        cls: "",
+        x: s.streak.activeDays + " 天有完成记录",
+      },
+      {
+        v: a.total,
+        l: "进行中的待办",
+        cls: a.total ? "c-primary" : "",
+        x: a.overdue
+          ? '<span class="c-red">' + a.overdue + " 项已超时</span>"
+          : "暂时没有超时的待办",
+      },
+      {
+        v: s.streak.bestDay ? s.streak.bestDay.count + " 项" : "—",
+        l: "单日最高记录",
+        cls: "",
+        x: s.streak.bestDay ? s.streak.bestDay.date : "还没有完成记录",
+      },
+    ];
+
+    if (s.lead && s.lead.count) {
+      cards.push({
+        v: fmtDuration(s.lead.averageMs),
+        l: "平均计划提前量",
+        cls: "",
+        x: "按 " + s.lead.count + " 条待办统计（创建 → 截止）",
+      });
+    }
+
+    $("statCards").innerHTML = cards
+      .map(
+        (c) =>
+          '<div class="stat-card">' +
+          '<div class="v ' + (c.cls || "") + '">' + c.v + "</div>" +
+          '<div class="l">' + c.l + "</div>" +
+          (c.x ? '<div class="x">' + c.x + "</div>" : "") +
+          "</div>"
+      )
+      .join("");
+
+    // ---------------- 每日完成量 ----------------
+    const maxDaily = Math.max(0, ...s.daily.map((x) => x.count));
+    $("dailySub").textContent =
+      "最高一天完成 " + maxDaily + " 项 · 柱子越高说明那天完成得越多";
+    renderCols(
+      $("dailyCols"),
+      s.daily.map((x) => ({
+        v: x.count,
+        tip: x.date + "：" + (x.count ? "完成 " + x.count + " 项" : "无完成"),
+        label: "",
+      })),
+      { height: 70 }
+    );
+
+    // ---------------- 每周完成量 ----------------
+    renderCols(
+      $("weeklyCols"),
+      s.weekly.map((w) => {
+        const md = w.weekStart.slice(5).replace("-", "/");
+        return { v: w.count, tip: w.weekStart + " 那周：" + w.count + " 项", label: md };
+      }),
+      { height: 62, showValue: true }
+    );
+
+    // ---------------- 星期分布 ----------------
+    const WD = ["日", "一", "二", "三", "四", "五", "六"];
+    const busiestWd = s.average.busiestWeekday;
+    $("weekdaySub").textContent =
+      busiestWd === null
+        ? "还没有足够的数据"
+        : "你最常在星期" + WD[busiestWd] + "完成任务";
+    renderCols(
+      $("weekdayCols"),
+      s.weekday.map((n, i) => ({
+        v: n,
+        tip: "星期" + WD[i] + "：" + n + " 项",
+        label: WD[i],
+        cls: n ? (i === busiestWd ? "good" : "has") : "",
+      })),
+      { height: 60, showValue: true }
+    );
+
+    // ---------------- 时段分布 ----------------
+    const busiestHour = s.average.busiestHour;
+    $("hourlySub").textContent =
+      busiestHour === null
+        ? "还没有足够的数据"
+        : "你最常在 " + busiestHour + ":00 前后完成任务";
+    renderCols(
+      $("hourlyCols"),
+      s.hourly.map((n, i) => ({
+        v: n,
+        tip: i + ":00 - " + i + ":59：" + n + " 项",
+        label: i % 6 === 0 ? String(i) : "",
+        cls: n ? (i === busiestHour ? "good" : "has") : "",
+      })),
+      { height: 58 }
+    );
+
+    // ---------------- 当前待办的时间分布 ----------------
+    const chips = [
+      { n: a.overdue, t: "已超时", color: "var(--red)" },
+      { n: a.within1d, t: "24 小时内到期", color: "var(--red)" },
+      { n: a.within3d, t: "1-3 天内到期", color: "var(--yellow)" },
+      { n: a.within7d, t: "3-7 天内到期", color: "var(--green)" },
+      { n: a.later, t: "7 天以后", color: "#8b93a7" },
+    ];
+    const totalChips = chips.reduce((sum, c) => sum + c.n, 0);
+    $("activeChips").innerHTML = totalChips
+      ? chips
+          .map(
+            (c) =>
+              '<span class="chip"><i style="background:' + c.color + '"></i>' +
+              c.t + " <b>" + c.n + "</b></span>"
+          )
+          .join("")
+      : '<div class="stats-empty">当前没有待办，先添加一条吧。</div>';
+  }
+
+  // =====================================================================
+  // 导出到日历（.ics）
+  //
+  // 直接 fetch 二进制流再落盘，而不是打开新窗口：
+  //   - 打开 URL 会丢 Authorization 头，服务端只会回 401；
+  //   - 也不能把 token 放查询串里，那样会留在浏览器历史和访问日志中。
+  // =====================================================================
+  async function exportCalendar() {
+    const btn = $("exportBtn");
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "生成中…";
+
+    try {
+      const tz = -new Date().getTimezoneOffset();
+      const res = await fetch(API_BASE + "/api/calendar.ics?tz=" + tz, {
+        headers: { Authorization: "Bearer " + token },
+      });
+
+      if (!res.ok) {
+        let msg = "HTTP " + res.status;
+        try {
+          const d = await res.json();
+          if (d && d.error) msg = d.error;
+        } catch (e) { /* 非 JSON 响应 */ }
+        throw new Error(msg);
+      }
+
+      const ics = await res.text();
+      const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const p = (n) => String(n).padStart(2, "0");
+      const now = new Date();
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "待办-" + now.getFullYear() + p(now.getMonth() + 1) + p(now.getDate()) + ".ics";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // 交给浏览器下载后再释放，太早释放会让部分浏览器下载失败
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      const count = todos.length;
+      showToast(
+        count
+          ? "已导出 " + count + " 条待办。用日历 App 打开下载的 .ics 文件即可导入。"
+          : "已导出，但当前没有待办，文件里是空日历。",
+        { ms: 9000 }
+      );
+      setSyncState("已导出 " + count + " 条待办");
+    } catch (e) {
+      showToast("导出失败：" + ((e && e.message) || "请稍后重试"), { ms: 8000 });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  }
+
   // ---------------------------------------------------------------- 事件
   $("tabLogin").addEventListener("click", () => {
     authMode = "login";
@@ -1297,7 +1855,7 @@
     $("emailSave").disabled = false;
 
     if (ok) {
-      setEmailMsg("已保存，剩余不足 1 天时会发邮件到这个邮箱", "ok");
+      setEmailMsg("已保存。剩余 3 天、1 天、已超时时会各收到一封提醒邮件", "ok");
       setTimeout(() => $("emailFormWrap").classList.add("hidden"), 1600);
     }
   });
@@ -1361,6 +1919,22 @@
   // ---------------- 管理后台交互 ----------------
   $("adminBtn").addEventListener("click", openAdmin);
   $("adminBack").addEventListener("click", closeAdmin);
+
+  // ---------------- 统计 / 导出 / 浮层提示 ----------------
+  $("statsBtn").addEventListener("click", openStats);
+  $("statsBack").addEventListener("click", closeStats);
+  $("exportBtn").addEventListener("click", exportCalendar);
+  $("toastAction").addEventListener("click", runToastAction);
+  $("toastClose").addEventListener("click", hideToast);
+
+  // 统计窗口切换
+  $("rangeTabs").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-days]");
+    if (!btn) return;
+    statsDays = Number(btn.dataset.days) || 90;
+    [...$("rangeTabs").children].forEach((b) => b.classList.toggle("active", b === btn));
+    loadStats();
+  });
 
   $("adminSearch").addEventListener("input", (e) => {
     renderAdminList(e.target.value);

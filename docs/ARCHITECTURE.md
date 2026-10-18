@@ -28,7 +28,7 @@
 │   │   ├ index.html     │        │   api.js                 │   │
 │   │   ├ sw.js          │        │    ├ /api/register       │   │
 │   │   ├ manifest       │        │    ├ /api/login ...      │   │
-│   │   └ icons/         │        │    └ /api/completions    │   │
+│   │   └ icons/         │        │    └ /api/stats/.ics     │   │
 │   └────────────────────┘        │                          │   │
 │                                 │   notify.js（定时任务）   │   │
 │                                 │    每 15 分钟执行         │   │
@@ -48,6 +48,17 @@
               │ notify:lastRun   │   │                  │   │              │
               └──────────────────┘   └──────────────────┘   └──────────────┘
 ```
+
+**代码模块划分**
+
+| 文件 | 职责 |
+|---|---|
+| `netlify/functions/api.js` | 全部 HTTP 路由（账号 / 待办 / 统计 / 日历 / 管理员 / 运维） |
+| `netlify/functions/notify.js` | 定时任务入口（每 15 分钟） |
+| `lib/notify.js` | 多级提醒的判定逻辑 + 自写的 SMTP 客户端 |
+| `lib/stats.js` | 统计计算（纯函数，不依赖 Netlify 环境） |
+| `lib/ics.js` | 日历文件生成（纯函数） |
+| `public/index.html` | 前端单文件应用 |
 
 **关键点：前后端同源。** 前端页面和 API 都由 `yuwann-todo.netlify.app` 提供，
 因此浏览器端没有任何跨域问题。安卓 App 内页面是本地文件，属于跨域，
@@ -94,10 +105,10 @@ Key 使用 `类型:用户名` 的形式，Value 是 JSON。
 
 | Key 格式 | Value 结构 | 说明 |
 |---|---|---|
-| `user:<用户名>` | `{ salt, hash, createdAt, email? }` | 账号。<br>`salt` 16 字节随机盐（hex）<br>`hash` PBKDF2-SHA256 结果（hex，256 位）<br>`email` 可选，绑定后才有 |
-| `todos:<用户名>` | `[{ id, text, deadline, created, notified?, notifiedAt? }]` | 该用户的全部待办数组<br>`deadline` 是毫秒时间戳<br>`notified` 标记是否已发过提醒邮件 |
+| `user:<用户名>` | `{ salt, hash, createdAt, email?, isAdmin? }` | 账号。<br>`salt` 16 字节随机盐（hex）<br>`hash` PBKDF2-SHA256 结果（hex，256 位）<br>`email` 可选，绑定后才有<br>`isAdmin` 可选，管理员为 `true` |
+| `todos:<用户名>` | `[{ id, text, deadline, created, updatedAt?, notifiedStages?, notifiedStage?, notified?, notifiedAt? }]` | 该用户的全部待办数组<br>`deadline` 是毫秒时间戳<br>`notifiedStages` 记录**已发过的提醒档位**（`3d`/`1d`/`overdue`）<br>`notified` 是旧版布尔字段，仅为兼容保留 |
 | `session:<token>` | `{ username, createdAt }` | 会话。token 是 32 字节随机值（hex）<br>有效期 30 天，**在读取时惰性判断过期** |
-| `completions:<用户名>` | `[{ text, at, deadline, onTime }]` | 完成历史，热力图数据源<br>`at` 完成时间戳<br>`onTime` 是否在截止前完成<br>**上限 3000 条**，超出丢弃最旧的 |
+| `completions:<用户名>` | `[{ id, text, at, deadline, onTime }]` | 完成历史，热力图与统计的数据源<br>`id` 12 位随机串，撤销完成时用于精确回滚<br>`at` 完成时间戳<br>`onTime` 是否在截止前完成<br>**上限 3000 条**，超出丢弃最旧的 |
 | `notify:lastRun` | `{ at, trigger, scannedUsers, sent, failed, error }` | 定时任务最近一次运行记录，供 `/api/notify-status` 查询 |
 
 ### 为什么待办用「一个数组」而不是「每条一个 key」
@@ -243,6 +254,7 @@ if (path === "/api/register" && req.method === "POST") { ... }
 
 - 请求体：JSON
 - 响应体：JSON（`Content-Type: application/json; charset=utf-8`）
+  —— 唯一例外是 `/api/calendar.ics`，返回 `text/calendar`
 - 认证：`Authorization: Bearer <token>`
 - 响应头带 `Access-Control-Allow-Origin: *`（供 App 和 GitHub Pages 调用）
 - 错误格式统一为 `{ "error": "人类可读的中文提示" }`
@@ -253,17 +265,19 @@ if (path === "/api/register" && req.method === "POST") { ... }
 
 ## 六、前端工作逻辑
 
-`public/index.html` 是**单文件应用**：HTML + CSS + JS 全在一个文件里，约 1060 行。
+`public/index.html` 是**单文件应用**：HTML + CSS + JS 全在一个文件里（约 1900 行）。
 没有框架、没有构建步骤——直接改完就能部署。
 
 ### 视图切换
 
-两个视图，通过 `.hidden` 类切换：
+三个视图，通过 `.hidden` 类切换：
 
 | 视图 | id | 内容 |
 |---|---|---|
 | 登录/注册 | `authView` | 用户名密码表单，登录/注册 Tab 切换 |
-| 主应用 | `appView` | 用户栏、邮箱栏、添加表单、待办列表、热力图 |
+| 主应用 | `appView` | 用户栏、邮箱栏、添加表单、待办列表、统计/导出按钮、热力图 |
+| 统计 | `statsView` | 指标卡、每日/每周/星期/时段柱状图、待办时间分布 |
+| 管理后台 | `adminView` | 仅管理员可见 |
 
 启动流程（`init()`）：
 
@@ -304,6 +318,56 @@ if (path === "/api/register" && req.method === "POST") { ... }
 - 颜色分级：`0 → lv0`，`1 → lv1`，`2-3 → lv2`，`4-5 → lv3`，`6+ → lv4`
 - 点击方格 → `showDayDetail(dateKey)` 展示当天任务明细
 
+### 统计页
+
+点主界面的「📊 统计」进入 `statsView`，数据来自 `GET /api/stats`（见 `lib/stats.js`）。
+
+**为什么统计在服务端算，而不是前端算**
+
+热力图在前端按本地时区聚合，统计页如果也在前端算，两套逻辑很容易漂移。
+现在的做法是：前端把 `tz = -new Date().getTimezoneOffset()` 传给服务端，
+由 `lib/stats.js` 统一决定所有"天"的边界；前端只负责把结果画成柱状图。
+
+> `getTimezoneOffset()` 返回的是**相反数**（北京返回 `-480`），必须取负再传。
+> 传错方向会让所有"天"整体错位 16 小时，白天测试完全看不出来。
+
+柱状图由一个通用函数 `renderCols(el, items, opts)` 渲染，四个图共用一个实现：
+每个柱子 = 竖条（按最大值等比缩放到像素高度）+ 顶部数值 + 底部标签，
+鼠标悬停用 `title` 显示明细。
+
+### 撤销「已完成」
+
+「已完成」= 从列表删除 + 写一条完成历史，误点后无法自然恢复。为此加了撤销通道：
+
+```
+点「已完成」
+  → DELETE /api/todos/<id>
+  → 响应带上 completedTodo（快照）与 completionId
+  → 底部浮层提示「已完成「xxx」　[撤销] ✕」，10 秒后自动消失
+  → 点撤销：POST /api/todos/restore { todo, completionId }
+        ├─ 200 → 待办回到列表 + 完成记录被删除 → 重画列表与热力图
+        ├─ 409 → 该待办已在列表里（别的设备也撤销过）→ 刷新列表
+        └─ 其它 → 提示条改成「撤销失败…[重试]」，保留状态可再点
+```
+
+**必须回滚完成记录**：热力图的格子数与统计里的完成数/准时率都读 `completions:*`。
+只放回待办而不删记录，会留下"其实没完成"的记录，数据慢慢变脏且极难发现。
+
+### 浮层提示（toast）
+
+一个组件两用：撤销提示、导出日历结果。选它而不选 `alert()` 的原因：
+撤销要"顺手点一下"，系统弹窗会打断操作，手机上也不好看。
+`showToast(text, { actionLabel, onAction, ms })` 负责显示，`hideToast()` 负责收起。
+
+### 导出到日历
+
+点「📅 导出日历」→ 用 `fetch` 带 `Authorization` 头请求 `/api/calendar.ics`
+→ 拿到文本 → `new Blob([...], { type: "text/calendar" })` → 生成临时 `<a download>`
+→ 点击下载 → 5 秒后 `revokeObjectURL`（太早释放会让部分浏览器下载失败）。
+
+> 为什么不直接 `window.open("/api/calendar.ics")`：新窗口不会带认证头，只会拿到 401；
+> 也不把 token 放查询串——那会留在浏览器历史与访问日志里。
+
 ---
 
 ## 七、邮件提醒机制
@@ -320,21 +384,39 @@ Netlify 会按此 cron 自动调用该函数。
 
 ### 判断逻辑（`lib/notify.js` 的 `runNotify()`）
 
+提醒分**三档**（`lib/notify.js` 的 `STAGES`），每档最多发一次：
+
+| 档位 | 触发条件（距截止） | 邮件主题 | 配色 |
+|---|---|---|---|
+| `3d` | ≤ 3 天 | ⏳ 待办还有 3 天到期 | 黄 |
+| `1d` | ≤ 1 天 | ⏰ 待办即将到期 | 红 |
+| `overdue` | < 0（已超时） | ⚠️ 待办已超时 | 深红 |
+
 ```
 遍历所有 user:* 键
   ├─ 用户未绑定邮箱 → 跳过
   └─ 读取该用户的 todos:*
        └─ 逐条判断：
-            ├─ 已标记 notified → 跳过（去重）
-            ├─ 剩余时间 > 24 小时 → 跳过
-            └─ 剩余时间 ≤ 24 小时 → 发邮件
-                 ├─ 成功 → 标记 notified = true, notifiedAt = now
+            ├─ currentStage(剩余时间) 为 null（还早）→ 跳过
+            ├─ 该档位已在 notifiedStages 里 → 跳过（去重）
+            └─ 否则 → 按该档位的文案发邮件
+                 ├─ 成功 → 把「截至该档」的所有档位一起标记
+                 │           notifiedStages / notifiedStage / notifiedAt / 旧字段 notified
                  └─ 失败 → 不标记（下一轮自动重试）
 ```
 
-- 已超时的待办（剩余为负）也会提醒，邮件标题标为「已超时」
-- 每条待办**只提醒一次**
-- 发送失败不标记，所以会自动重试
+**为什么失败要"一起标记到当前档"**
+
+如果定时任务停过一阵，一条待办可能从「剩 5 天」直接变成「已超时」。
+只标记 `overdue` 的话，下一轮它仍是 `overdue`（已标记，跳过）——没有问题；
+但反过来，如果只标记"当前档"而不标记更早的档位，一旦时间倒回或逻辑调整，
+就可能补发一串过期邮件。现在的做法是**跳过中间档一起标记**，
+语义变成"比当前更紧急的提醒都不需要再发了"。
+
+**旧数据兼容**：只有 `notified: true` 的老待办，视为 `["3d","1d"]` 已发，
+升级后不会给存量待办补发邮件（`sentStages()` 负责这层兼容）。
+
+**改截止时间会重置全部档位**（见 `api.js` 的 PATCH 分支），只改文字不重置。
 
 ### 为什么自己写 SMTP 客户端
 
@@ -425,7 +507,12 @@ cd todo-netlify && python3 build-native-html.py
 | 密码用 PBKDF2 而非 bcrypt/argon2 | Web Crypto 原生支持，无需引入原生依赖 |
 | 前端轮询而非 WebSocket | Netlify Functions 无法维持长连接；20 秒轮询足够 |
 | 热力图按本地时区归组 | 服务器是 UTC，按 UTC 归组会让凌晨完成的任务归错天 |
+| 统计由服务端算，时区参数由客户端传 | 只有一处决定"哪天算哪天"，热力图与统计页不会各算一套而漂移 |
 | 完成历史与待办分开存 | 待办会被删除，历史必须独立保留 |
+| 完成记录带自己的 `id` | 撤销完成时要精确删掉那一条，不能靠"最后一条"猜 |
+| 撤销必须回滚完成记录 | 否则热力图多一格、准时率虚高，数据慢慢变脏 |
+| 日历导出用 `VEVENT` 而非 `VTODO` | Google 日历对 `VTODO` 支持极差，导入后常什么都不显示 |
+| 提醒分三档而非只提醒一次 | 「剩余 1 天才提醒」对提前规划的待办太晚 |
 
 ---
 
@@ -441,6 +528,10 @@ cd todo-netlify && python3 build-native-html.py
 6. **截止时间无范围校验** — 可存入公元 52352 年这类异常值
 7. **无「忘记密码」流程** — 邮件通道已具备，实现成本低
 8. **App 与 Web 版本号不同步**
+9. **完成历史上限 3000 条** — 超出后丢弃最旧的，所以「历史最长连续天数」在
+   极重度使用下可能被截断（统计页与热力图都受此限制）
+10. **日历导出是一次性快照** — 不提供订阅地址（那需要把 token 放进 URL 或另做
+    公开链接，涉及凭据泄露风险），加了新待办需要重新导出一次
 
 ---
 

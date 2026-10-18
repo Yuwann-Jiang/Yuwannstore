@@ -224,43 +224,91 @@ export function fmtRemain(ms) {
 }
 
 // ---------------------------------------------------------------------------
-// 邮件内容
+// 多级提醒：按紧急程度递增的三个阶段
+//   3d      剩余 ≤ 3 天        预告
+//   1d      剩余 ≤ 1 天        正式提醒
+//   overdue 已超过截止时间      催办
+// 每个阶段最多发一次；若待办直接跳到更紧急的阶段，会跳过中间档（不补发）。
 // ---------------------------------------------------------------------------
-export function renderEmail({ todo, remain, appUrl }) {
-  const overdue = remain < 0;
-  const status = overdue ? "已超时" : "即将到期";
-  const subject = overdue ? `⚠️ 待办已超时：${todo.text}` : `⏰ 待办即将到期：${todo.text}`;
+export const STAGES = ["3d", "1d", "overdue"];
 
-  const accent = overdue ? "#e5484d" : "#eab308";
+const STAGE_META = {
+  "3d": {
+    label: "还有 3 天",
+    title: "待办还有 3 天到期",
+    accent: "#eab308",
+    advice: "还有几天时间，可以安排一下节奏。",
+  },
+  "1d": {
+    label: "即将到期",
+    title: "待办即将到期",
+    accent: "#e5484d",
+    advice: "不到 24 小时了，建议优先处理。",
+  },
+  overdue: {
+    label: "已超时",
+    title: "待办已超时",
+    accent: "#b91c1c",
+    advice: "已经超过截止时间，请尽快完成或调整时间。",
+  },
+};
+
+// 根据剩余时间判断当前应处于哪个提醒阶段；返回 null 表示还不到提醒时机
+export function currentStage(remain) {
+  if (remain < 0) return "overdue";
+  if (remain <= DAY_MS) return "1d";
+  if (remain <= 3 * DAY_MS) return "3d";
+  return null;
+}
+
+// 读取某条待办已经发过哪些阶段（兼容旧版本的 notified 布尔字段）
+export function sentStages(todo) {
+  if (Array.isArray(todo.notifiedStages)) return todo.notifiedStages.slice();
+  // 旧版本只在"剩余不足 1 天"时发过一次，视为 3d 与 1d 两档都已发
+  if (todo.notified === true) return ["3d", "1d"];
+  return [];
+}
+
+// ---------------------------------------------------------------------------
+// 邮件内容（按阶段生成不同文案与配色）
+// ---------------------------------------------------------------------------
+export function renderEmail({ todo, remain, appUrl, stage }) {
+  const st = stage || currentStage(remain) || "1d";
+  const meta = STAGE_META[st] || STAGE_META["1d"];
+
+  const subject = `${st === "overdue" ? "⚠️" : st === "1d" ? "⏰" : "⏳"} ${meta.title}：${todo.text}`;
+
   const html = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:24px;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
-    <div style="background:${accent};padding:18px 22px;color:#fff;">
+    <div style="background:${meta.accent};padding:18px 22px;color:#fff;">
       <div style="font-size:13px;opacity:.9;">待办提醒</div>
-      <div style="font-size:19px;font-weight:600;margin-top:4px;">${status}</div>
+      <div style="font-size:19px;font-weight:600;margin-top:4px;">${meta.title}</div>
     </div>
     <div style="padding:22px;">
       <div style="font-size:17px;font-weight:600;color:#1f2933;line-height:1.5;word-break:break-word;">${escapeHtml(todo.text)}</div>
       <table style="margin-top:16px;border-collapse:collapse;font-size:14px;color:#6b7280;">
         <tr><td style="padding:4px 12px 4px 0;">截止时间</td><td style="color:#1f2933;">${fmtDeadline(todo.deadline)}</td></tr>
-        <tr><td style="padding:4px 12px 4px 0;">时间状态</td><td style="color:${accent};font-weight:600;">${fmtRemain(remain)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;">时间状态</td><td style="color:${meta.accent};font-weight:600;">${fmtRemain(remain)}</td></tr>
       </table>
-      <div style="margin-top:22px;">
+      <p style="color:#4b5563;font-size:13.5px;margin-top:14px;line-height:1.6;">${meta.advice}</p>
+      <div style="margin-top:20px;">
         <a href="${appUrl}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:11px 20px;border-radius:9px;font-size:14px;">打开待办清单</a>
       </div>
-      <p style="color:#9aa5b1;font-size:12px;margin-top:22px;line-height:1.6;">这条提醒在你绑定邮箱后自动发送，每条待办只会提醒一次。</p>
+      <p style="color:#9aa5b1;font-size:12px;margin-top:22px;line-height:1.6;">提醒分三档：剩余 3 天、剩余 1 天、已超时。每档只会收到一次。</p>
     </div>
   </div>
 </body></html>`;
 
   const text =
-    `【${status}】${todo.text}\n` +
+    `【${meta.title}】${todo.text}\n` +
     `截止时间：${fmtDeadline(todo.deadline)}\n` +
     `时间状态：${fmtRemain(remain)}\n` +
+    `${meta.advice}\n` +
     `打开待办清单：${appUrl}\n`;
 
-  return { subject, html, text };
+  return { subject, html, text, stage: st };
 }
 
 function escapeHtml(s) {
@@ -311,15 +359,21 @@ export async function runNotify({ store, mailer, from, appUrl, now = Date.now(),
     let changed = false;
     for (const todo of todos) {
       result.scannedTodos++;
-      if (todo.notified) continue;
+
       const remain = todo.deadline - now;
-      if (remain > DAY_MS) continue; // 还剩超过 1 天，不提醒
+      const stage = currentStage(remain);
+      if (!stage) continue; // 还没到任何提醒阶段
+
+      const sent = sentStages(todo);
+      if (sent.includes(stage)) continue; // 这一档已发过
 
       result.due++;
-      const mail = renderEmail({ todo, remain, appUrl });
+      const mail = renderEmail({ todo, remain, appUrl, stage });
 
       if (dryRun) {
-        result.details.push({ username, todo: todo.text, to: user.email, subject: mail.subject, dryRun: true });
+        result.details.push({
+          username, todo: todo.text, to: user.email, stage, subject: mail.subject, dryRun: true,
+        });
         continue;
       }
 
@@ -331,14 +385,25 @@ export async function runNotify({ store, mailer, from, appUrl, now = Date.now(),
           text: mail.text,
           html: mail.html,
         });
-        todo.notified = true;
+
+        // 标记「截至当前阶段」的所有档位为已发：
+        // 例如待办直接跳到超时，就把 3d / 1d 一起标记，避免之后补发一串。
+        const idx = STAGES.indexOf(stage);
+        const mark = new Set(sent);
+        for (let i = 0; i <= idx; i++) mark.add(STAGES[i]);
+        todo.notifiedStages = STAGES.filter((s) => mark.has(s));
+        todo.notifiedStage = stage;
         todo.notifiedAt = now;
+        todo.notified = true; // 兼容旧字段与旧版前端
+
         changed = true;
         result.sent++;
-        result.details.push({ username, todo: todo.text, to: user.email, sent: true });
+        result.details.push({ username, todo: todo.text, to: user.email, stage, sent: true });
       } catch (e) {
         result.failed++;
-        result.details.push({ username, todo: todo.text, to: user.email, error: String((e && e.message) || e) });
+        result.details.push({
+          username, todo: todo.text, to: user.email, stage, error: String((e && e.message) || e),
+        });
       }
     }
 

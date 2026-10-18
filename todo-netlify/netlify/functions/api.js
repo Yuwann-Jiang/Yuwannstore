@@ -6,6 +6,8 @@ import { getStore } from "@netlify/blobs";
 // 该函数运行时未暴露全局 crypto，需显式引入 Node 的 WebCrypto 实现
 import { webcrypto as crypto } from "node:crypto";
 import { createMailer, runNotify } from "../../lib/notify.js";
+import { computeStats } from "../../lib/stats.js";
+import { buildCalendar } from "../../lib/ics.js";
 
 const PBKDF2_ITERATIONS = 100000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 会话有效期：30 天
@@ -60,6 +62,19 @@ function json(obj, status = 200) {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
       ...CORS_HEADERS,
+    },
+  });
+}
+
+// 文本响应（用于 .ics 日历导出）
+function text(body, contentType, extraHeaders = {}) {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "no-store",
+      ...CORS_HEADERS,
+      ...extraHeaders,
     },
   });
 }
@@ -180,26 +195,29 @@ async function getTodos(username) {
 }
 
 // ---------------------------------------------------------------------------
-// 完成记录（用于「完成热力图」）
+// 完成记录（用于「完成热力图」与「统计页面」）
 // 说明：点「已完成」会把待办删除，因此在删除前先落一条历史记录。
+// 返回写入的记录（含唯一 id），供"撤销完成"时精确回滚；失败返回 null。
 // ---------------------------------------------------------------------------
 async function recordCompletion(username, todo) {
   const r = await storeGet(completionsKey(username));
-  if (!r.ok) return false;
+  if (!r.ok) return null;
 
   const list = Array.isArray(r.value) ? r.value : [];
   const now = Date.now();
-  list.push({
+  const record = {
+    id: randomToken().slice(0, 12),
     text: String(todo.text ?? "").slice(0, 200),
     at: now,
     deadline: Number.isFinite(todo.deadline) ? todo.deadline : null,
     onTime: Number.isFinite(todo.deadline) ? now <= todo.deadline : null,
-  });
+  };
+  list.push(record);
 
   // 只保留最近 MAX_COMPLETIONS 条，避免无限增长
   const trimmed = list.length > MAX_COMPLETIONS ? list.slice(-MAX_COMPLETIONS) : list;
   const w = await storeSet(completionsKey(username), trimmed);
-  return w.ok;
+  return w.ok ? record : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -665,10 +683,13 @@ async function handle(req) {
       if (!Number.isFinite(dl)) return json({ error: "截止时间无效" }, 400);
       if (dl !== target.deadline) {
         target.deadline = dl;
-        // 截止时间变了 → 之前发过的提醒已失效，重置提醒状态以便按新时间重新提醒。
-        // 注意：只在时间变化时重置。单纯改文字不重置，否则会收到重复邮件。
+        // 截止时间变了 → 之前发过的提醒已失效，重置**全部**提醒状态，
+        // 以便按新时间重新走完 3 天 → 1 天 → 超时 三档。
+        // 注意：只在时间变化时重置；单纯改文字不重置，否则会收到重复邮件。
         delete target.notified;
         delete target.notifiedAt;
+        delete target.notifiedStage;
+        delete target.notifiedStages;   // 多级提醒的已发档位
         changed = true;
       }
     }
@@ -682,7 +703,7 @@ async function handle(req) {
     return json({ todo: target, todos: list });
   }
 
-  // 完成（删除）待办 —— 同时记入完成历史，供热力图统计
+  // 完成（删除）待办 —— 同时记入完成历史，供热力图与统计使用
   const delMatch = path.match(/^\/api\/todos\/([A-Za-z0-9]+)$/);
   if (delMatch && req.method === "DELETE") {
     const id = delMatch[1];
@@ -697,8 +718,66 @@ async function handle(req) {
     if (!w.ok) return STORAGE_DOWN();
 
     // 记录历史；即使记录失败也不影响"已完成"本身
-    const recorded = await recordCompletion(currentUser, target);
-    return json({ ok: true, todos: next, completionRecorded: recorded });
+    const record = await recordCompletion(currentUser, target);
+    return json({
+      ok: true,
+      todos: next,
+      completionRecorded: !!record,
+      // 供前端"撤销"使用：删掉的是哪一条、对应哪条完成记录
+      completedTodo: target,
+      completionId: record ? record.id : null,
+    });
+  }
+
+  // 撤销「已完成」—— 把待办放回去，并回滚对应的完成记录
+  if (path === "/api/todos/restore" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    if (!body) return json({ error: "请求格式有误" }, 400);
+
+    const t = body.todo;
+    if (!t || typeof t !== "object") return json({ error: "缺少待办数据" }, 400);
+
+    const text = String(t.text ?? "").trim();
+    const deadline = Number(t.deadline);
+    const todoId = String(t.id ?? "").trim();
+    if (!text) return json({ error: "待办内容不能为空" }, 400);
+    if (!Number.isFinite(deadline)) return json({ error: "截止时间无效" }, 400);
+    if (!/^[A-Za-z0-9]{1,32}$/.test(todoId)) return json({ error: "待办 id 不合法" }, 400);
+
+    const r = await getTodos(currentUser);
+    if (!r.ok) return STORAGE_DOWN();
+    const list = r.todos;
+    if (list.some((x) => x.id === todoId)) {
+      return json({ error: "该待办已存在" }, 409);
+    }
+
+    const restored = {
+      id: todoId,
+      text: text.slice(0, 500),
+      deadline,
+      created: Number.isFinite(t.created) ? t.created : Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    list.push(restored);
+    const w = await storeSet(todosKey(currentUser), list);
+    if (!w.ok) return STORAGE_DOWN();
+
+    // 回滚完成记录，保证热力图与统计不被这次误操作污染
+    let rolledBack = false;
+    const completionId = String(body.completionId ?? "").trim();
+    if (completionId) {
+      const cr = await storeGet(completionsKey(currentUser));
+      if (cr.ok && Array.isArray(cr.value)) {
+        const filtered = cr.value.filter((c) => c.id !== completionId);
+        if (filtered.length !== cr.value.length) {
+          const cw = await storeSet(completionsKey(currentUser), filtered);
+          rolledBack = cw.ok;
+        }
+      }
+    }
+
+    return json({ ok: true, todo: restored, todos: list, completionRolledBack: rolledBack });
   }
 
   // 完成历史（热力图数据源）
@@ -706,6 +785,51 @@ async function handle(req) {
     const r = await storeGet(completionsKey(currentUser));
     if (!r.ok) return STORAGE_DOWN();
     return json({ completions: Array.isArray(r.value) ? r.value : [] });
+  }
+
+  // 统计（完成率、准时率、连续天数、分布图）
+  // 参数：days=统计窗口天数（1-365，默认 90）；tz=客户端时区（比 UTC 快多少分钟，默认 480）
+  if (path === "/api/stats" && req.method === "GET") {
+    const tr = await getTodos(currentUser);
+    if (!tr.ok) return STORAGE_DOWN();
+    const cr = await storeGet(completionsKey(currentUser));
+    if (!cr.ok) return STORAGE_DOWN();
+
+    return json(
+      computeStats({
+        todos: tr.todos,
+        completions: Array.isArray(cr.value) ? cr.value : [],
+        now: Date.now(),
+        days: url.searchParams.get("days") === null
+          ? undefined
+          : Number(url.searchParams.get("days")),
+        tzMinutes:
+          url.searchParams.get("tz") === null
+            ? undefined
+            : Number(url.searchParams.get("tz")),
+      })
+    );
+  }
+
+  // 导出到日历（.ics）—— 浏览器用 Blob 下载，不需要额外的公开链接
+  // 参数：alarms=0 可去掉"提前 1 天"的提醒；tz 同 /api/stats
+  if (path === "/api/calendar.ics" && req.method === "GET") {
+    const tr = await getTodos(currentUser);
+    if (!tr.ok) return STORAGE_DOWN();
+
+    const tzParam = url.searchParams.get("tz");
+    const ics = buildCalendar({
+      todos: tr.todos,
+      appUrl: process.env.APP_URL || "https://yuwann-todo.netlify.app/",
+      now: Date.now(),
+      alarms: url.searchParams.get("alarms") !== "0",
+      tzMinutes: tzParam === null ? undefined : Number(tzParam),
+      uidHost: "yuwann-todo",
+    });
+
+    return text(ics, "text/calendar; charset=utf-8", {
+      "Content-Disposition": 'attachment; filename="todos.ics"; filename*=UTF-8\'\'%E5%BE%85%E5%8A%9E.ics',
+    });
   }
 
   return json({ error: "接口不存在", path }, 404);
