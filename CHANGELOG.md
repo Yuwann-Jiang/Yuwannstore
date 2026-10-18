@@ -179,10 +179,15 @@
    教训：**凡是靠"临时环境变量"的凭据，一定会丢**，必须落到文件并由脚本读取。
 
 ### 运维事项
-- 本次仍**未正式发布**：Netlify 免费版积分已用尽（详见 1.7.0），
-  正式部署要等 2026-10-20 15:00（北京时间）积分重置。
-  期间通过**免费部署预览**验证，等重置后用**一次** `--prod` 把
-  1.7.0 的编辑功能与本次四项功能一起发布
+- 本次仍**未正式发布**：2026-10-18 11:20 实测 `--prod` 仍返回
+  `403 Account credit usage exceeded - new deploys are blocked until credits are added`
+  （详见 1.7.0 的积分说明；积分周期 `next_usage_period_start` = 2026-10-20 15:00 北京时间）。
+  等重置后用**一次** `--prod` 把 1.7.0 的编辑功能与本次四项功能一起发布
+- 本次功能的验证地址（免费部署预览，功能完整、与源码逐字节一致）：
+
+  ```
+  https://6ad438be770d65c7a2d3047e--yuwann-todo.netlify.app
+  ```
 - 新增本机凭据文件 `todo-netlify/.netlify-token`，并从 `netlify.sh` 自动读取；
   `NETLIFY_SITE_ID` 也改由脚本从 `.netlify/state.json` 提取
   （`env:*` / `blobs:*` 子命令只认这个变量，不认 `--site`）
