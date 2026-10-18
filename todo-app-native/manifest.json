@@ -1,0 +1,129 @@
+{
+    "@platforms" : [ "android", "iphone", "ipad" ],
+    "id" : "H5E0B88F1",
+    "name" : "待办事项",
+    "version" : {
+        "name" : "1.1.0",
+        "code" : "110"
+    },
+    "description" : "带截止时间、到期着色、邮件提醒与完成热力图的待办清单，登录同一账号即可多设备同步。",
+    "launch_path" : "index.html",
+    "developer" : {
+        "name" : "",
+        "email" : "",
+        "url" : ""
+    },
+    "permissions" : {
+        "Storage" : {},
+        "Runtime" : {},
+        "XMLHttpRequest" : {},
+        "Console" : {},
+        "Events" : {},
+        "Navigator" : {},
+        "Webview" : {},
+        "NativeUI" : {},
+        "Device" : {},
+        "Downloader" : {},
+        "Uploader" : {},
+        "Orientation" : {}
+    },
+    "plus" : {
+        "splashscreen" : {
+            "alwaysShowBeforeRender" : true,
+            "waiting" : true,
+            "autoclose" : true,
+            "delay" : 0
+        },
+        "popGesture" : "close",
+        "runmode" : "liberate",
+        "signature" : "",
+        "distribute" : {
+            "google" : {
+                "packagename" : "com.yuwann.todo",
+                "keystore" : "",
+                "password" : "",
+                "aliasname" : "",
+                "permissions" : [
+                    "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>"
+                ],
+                "minSdkVersion" : 21,
+                "targetSdkVersion" : 34
+            },
+            "apple" : {
+                "appid" : "",
+                "mobileprovision" : "",
+                "password" : "",
+                "p12" : "",
+                "devices" : "iphone",
+                "frameworks" : []
+            },
+            "orientation" : [ "portrait-primary", "landscape-primary" ],
+            "icons" : {
+                "android" : {
+                    "ldpi" : "unpackage/res/icons/48x48.png",
+                    "mdpi" : "unpackage/res/icons/48x48.png",
+                    "hdpi" : "unpackage/res/icons/72x72.png",
+                    "xhdpi" : "unpackage/res/icons/96x96.png",
+                    "xxhdpi" : "unpackage/res/icons/144x144.png",
+                    "xxxhdpi" : "unpackage/res/icons/192x192.png"
+                },
+                "ios" : {
+                    "appstore" : "unpackage/res/icons/1024x1024.png",
+                    "iphone" : {
+                        "app@2x" : "unpackage/res/icons/120x120.png",
+                        "app@3x" : "unpackage/res/icons/180x180.png",
+                        "spotlight@2x" : "unpackage/res/icons/80x80.png",
+                        "spotlight@3x" : "unpackage/res/icons/120x120.png",
+                        "settings@2x" : "unpackage/res/icons/58x58.png",
+                        "settings@3x" : "unpackage/res/icons/87x87.png",
+                        "notification@2x" : "unpackage/res/icons/40x40.png",
+                        "notification@3x" : "unpackage/res/icons/60x60.png"
+                    },
+                    "ipad" : {
+                        "app" : "unpackage/res/icons/76x76.png",
+                        "app@2x" : "unpackage/res/icons/152x152.png",
+                        "proapp@2x" : "unpackage/res/icons/167x167.png",
+                        "spotlight" : "unpackage/res/icons/40x40.png",
+                        "spotlight@2x" : "unpackage/res/icons/80x80.png",
+                        "settings" : "unpackage/res/icons/29x29.png",
+                        "settings@2x" : "unpackage/res/icons/58x58.png",
+                        "notification" : "unpackage/res/icons/20x20.png",
+                        "notification@2x" : "unpackage/res/icons/40x40.png"
+                    }
+                },
+                "splash" : {
+                    "android" : {
+                        "ldpi" : "unpackage/res/splash/480x800.png",
+                        "mdpi" : "unpackage/res/splash/480x800.png",
+                        "hdpi" : "unpackage/res/splash/720x1280.png",
+                        "xhdpi" : "unpackage/res/splash/720x1280.png",
+                        "xxhdpi" : "unpackage/res/splash/1080x1920.png"
+                    },
+                    "ios" : {
+                        "iphone" : {
+                            "default" : "unpackage/res/splash/750x1334.png",
+                            "retina40" : "unpackage/res/splash/1125x2436.png",
+                            "retina47" : "unpackage/res/splash/750x1334.png",
+                            "retina55" : "unpackage/res/splash/1242x2208.png",
+                            "retina58" : "unpackage/res/splash/1125x2436.png",
+                            "retina61" : "unpackage/res/splash/1170x2532.png",
+                            "retina65" : "unpackage/res/splash/1290x2796.png"
+                        },
+                        "ipad" : {
+                            "default" : "unpackage/res/splash/1536x2048.png",
+                            "retina" : "unpackage/res/splash/1536x2048.png"
+                        }
+                    }
+                }
+            },
+            "ios" : {
+                "dSYMs" : false
+            }
+        }
+    },
+    "screenOrientation" : [ "portrait-primary", "landscape-primary" ]
+}

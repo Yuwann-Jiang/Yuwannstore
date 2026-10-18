@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>待办事项</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --red: #e5484d;
+    --red-bg: #fdecec;
+    --yellow: #eab308;
+    --yellow-bg: #fdf6e3;
+    --green: #16a34a;
+    --green-bg: #e9f7ef;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px 60px;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 680px;
+  }
+
+  h1 {
+    font-size: 26px;
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h1 .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; align-self: center; }
+  .subtitle { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+  .form {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 2px 8px rgba(16, 24, 40, 0.04);
+    margin-bottom: 24px;
+  }
+  .form label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .form .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .form .field { flex: 1 1 220px; }
+  input[type="text"], input[type="datetime-local"] {
+    width: 100%;
+    padding: 11px 12px;
+    font-size: 15px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #fff;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input[type="text"]:focus, input[type="datetime-local"]:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+  }
+  .form .actions { margin-top: 16px; }
+
+  button {
+    font-family: inherit;
+    font-size: 15px;
+    padding: 11px 18px;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.05s;
+  }
+  button:active { transform: translateY(1px); }
+  .btn-add { background: var(--primary); color: #fff; }
+  .btn-add:hover { background: var(--primary-hover); }
+
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  select {
+    padding: 6px 10px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 48px 0 32px;
+    font-size: 14px;
+  }
+
+  .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 5px solid var(--gray, #cbd5e1);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.04);
+  }
+
+  .badge {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: #fff;
+  }
+  .badge span { font-size: 14px; }
+
+  .badge.red   { background: var(--red); }
+  .badge.yellow{ background: var(--yellow); }
+  .badge.green { background: var(--green); }
+
+  .content { flex: 1 1 auto; min-width: 0; }
+  .title { font-size: 16px; font-weight: 600; word-break: break-word; }
+  .meta { font-size: 12.5px; color: var(--muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .meta .overdue { color: var(--red); font-weight: 600; }
+
+  .btn-done {
+    flex: 0 0 auto;
+    background: var(--red-bg);
+    color: var(--red);
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+  .btn-done:hover { background: #fbdcdc; }
+
+  .item.removing { opacity: 0; transform: translateX(20px); transition: all 0.3s ease; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <h1><span class="dot" style="background:var(--primary)"></span>待办事项</h1>
+    <p class="subtitle">记录任务与截止时间，按剩余时间自动着色。</p>
+
+    <div class="legend">
+      <span><i style="background:var(--red)"></i>红 ≤ 24小时</span>
+      <span><i style="background:var(--yellow)"></i>黄 &gt;24h 且 ≤4天</span>
+      <span><i style="background:var(--green)"></i>绿 &gt;4天</span>
+    </div>
+
+    <form class="form" id="addForm">
+      <div class="row">
+        <div class="field">
+          <label for="text">待办事项</label>
+          <input type="text" id="text" placeholder="例如：提交周报" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="deadline">截止时间</label>
+          <input type="datetime-local" id="deadline" />
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn-add">＋ 添加待办</button>
+      </div>
+    </form>
+
+    <div class="toolbar">
+      <span id="count">共 0 条待办</span>
+      <label style="display:flex;align-items:center;gap:6px;">
+        排序
+        <select id="sort">
+          <option value="time_asc">剩余时间 短→长</option>
+          <option value="time_desc">剩余时间 长→短</option>
+          <option value="created">添加顺序</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="empty" class="empty">暂无待办事项，从上方添加一条吧。</div>
+    <ul class="list" id="list"></ul>
+  </div>
+
+<script>
+  const STORAGE_KEY = "todo_items_v1";
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  let todos = [];
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      todos = raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      todos = [];
+    }
+  }
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+  }
+
+  // 返回 [剩余毫秒, 等级] 等级: red/yellow/green/unknown
+  function classify(deadlineTs) {
+    const remain = deadlineTs - Date.now();
+    if (remain <= DAY_MS) return { remain, level: "red" };
+    if (remain <= 4 * DAY_MS) return { remain, level: "yellow" };
+    return { remain, level: "green" };
+  }
+
+  function fmtRemain(ms) {
+    if (ms < 0) {
+      const abs = -ms;
+      const d = Math.floor(abs / DAY_MS);
+      const h = Math.floor((abs % DAY_MS) / (60 * 60 * 1000));
+      const m = Math.floor((abs % (60 * 60 * 1000)) / (60 * 1000));
+      return `已超时 ${d}天${h}小时${m}分`;
+    }
+    const d = Math.floor(ms / DAY_MS);
+    const h = Math.floor((ms % DAY_MS) / (60 * 60 * 1000));
+    const m = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+    if (d > 0) return `${d}天${h}小时`;
+    if (h > 0) return `${h}小时${m}分`;
+    return `${m}分`;
+  }
+
+  function fmtDeadline(ts) {
+    const dt = new Date(ts);
+    return dt.toLocaleString("zh-CN", {
+      month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function render() {
+    const listEl = document.getElementById("list");
+    const emptyEl = document.getElementById("empty");
+    const countEl = document.getElementById("count");
+
+    const sort = document.getElementById("sort").value;
+    const now = Date.now();
+
+    const items = todos.map((t) => {
+      const c = classify(t.deadline);
+      return { ...t, ...c, overdue: c.remain < 0 };
+    });
+
+    if (sort === "time_asc") items.sort((a, b) => a.remain - b.remain);
+    else if (sort === "time_desc") items.sort((a, b) => b.remain - a.remain);
+    else items.sort((a, b) => a.created - b.created);
+
+    countEl.textContent = `共 ${todos.length} 条待办`;
+
+    if (items.length === 0) {
+      emptyEl.style.display = "block";
+      listEl.innerHTML = "";
+      return;
+    }
+    emptyEl.style.display = "none";
+
+    listEl.innerHTML = "";
+    items.forEach((t) => {
+      const li = document.createElement("li");
+      li.className = "item";
+      li.dataset.id = t.id;
+
+      // 左侧色条
+      li.style.borderLeftColor =
+        t.level === "red" ? "var(--red)" :
+        t.level === "yellow" ? "var(--yellow)" : "var(--green)";
+
+      const badgeTxt =
+        t.level === "red" ? "<span>!</span>紧急" :
+        t.level === "yellow" ? "<span>•</span>即将" : "<span>✓</span>从容";
+
+      li.innerHTML = `
+        <div class="badge ${t.level}">${badgeTxt}</div>
+        <div class="content">
+          <div class="title">${escapeHtml(t.text)}</div>
+          <div class="meta">
+            <span>截止 ${fmtDeadline(t.deadline)}</span>
+            <span class="${t.overdue ? "overdue" : ""}">${fmtRemain(t.remain)}</span>
+          </div>
+        </div>
+        <button class="btn-done" data-action="done">已完成</button>
+      `;
+
+      listEl.appendChild(li);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  function addItem(text, deadline) {
+    todos.push({
+      id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+      text: text,
+      deadline: deadline,
+      created: Date.now(),
+    });
+    save();
+    render();
+  }
+
+  function completeItem(id) {
+    const li = document.querySelector(`.item[data-id="${id}"]`);
+    if (li) {
+      li.classList.add("removing");
+      setTimeout(() => {
+        todos = todos.filter((t) => t.id !== id);
+        save();
+        render();
+      }, 250);
+      return;
+    }
+    todos = todos.filter((t) => t.id !== id);
+    save();
+    render();
+  }
+
+  // --- events ---
+  document.getElementById("addForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const textEl = document.getElementById("text");
+    const dlEl = document.getElementById("deadline");
+    const text = textEl.value.trim();
+    const deadline = dlEl.value ? new Date(dlEl.value).getTime() : NaN;
+
+    if (!text) { textEl.focus(); return; }
+    if (isNaN(deadline)) {
+      alert("请选择截止时间");
+      dlEl.focus();
+      return;
+    }
+    addItem(text, deadline);
+    textEl.value = "";
+    dlEl.value = "";
+    textEl.focus();
+  });
+
+  document.getElementById("sort").addEventListener("change", render);
+
+  document.getElementById("list").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action='done']");
+    if (!btn) return;
+    const id = btn.closest(".item").dataset.id;
+    completeItem(id);
+  });
+
+  // 每分钟刷新一次剩余时间显示
+  setInterval(render, 60 * 1000);
+
+  load();
+  render();
+</script>
+</body>
+</html>

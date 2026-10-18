@@ -1,0 +1,13 @@
+{
+  "name": "todo-netlify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "待办事项 API —— Netlify Functions 版本（Netlify Blobs 存储）",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "devDependencies": {
+    "netlify-cli": "^17.0.0"
+  }
+}

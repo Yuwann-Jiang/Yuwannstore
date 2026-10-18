@@ -1,0 +1,13 @@
+{
+  "name": "todo-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "待办事项 API —— Cloudflare Worker 版本",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

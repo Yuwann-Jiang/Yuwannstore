@@ -1,0 +1,9 @@
+name = "todo-api"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# KV 命名空间用于存放账号、会话与待办数据
+# id 会在创建命名空间后自动填入
+[[kv_namespaces]]
+binding = "TODO_KV"
+id = "6dfea4367325463ba499912c3f98540e"

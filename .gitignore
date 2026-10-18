@@ -1,0 +1,62 @@
+# ===================================================================
+# 白名单式 .gitignore
+#
+# 本工作区除本项目外还有其它无关目录（DeepSeek-Balance-Whale-Widget、
+# dsh-files、课程表.xlsx 等），以及大量含密钥 / 缓存 / 构建产物的目录。
+#
+# 因此这里采用「先全部忽略，再逐项放行」的白名单策略：
+# 只有明确列在「第二步」里的文件才会进入版本库。
+#
+# ⚠️ 新增项目文件或目录时，记得在第二步放行，否则不会被提交。
+# ===================================================================
+
+# ---------- 第一步：忽略一切 ----------
+/*
+
+# ---------- 第二步：放行项目文件 ----------
+!/.gitignore
+!/README.md
+!/CHANGELOG.md
+!/LICENSE
+!/index.html
+!/todo.html
+!/docs/
+!/todo-netlify/
+!/todo-server/
+!/todo-app-native/
+!/todo-worker/
+!/todo-deno/
+
+# ---------- 第三步：从已放行的目录中再排除敏感 / 垃圾内容 ----------
+
+# 敏感凭据 —— 绝对不要提交
+/todo-netlify/.notify-secret
+/todo-netlify/.admin-secret
+/todo-netlify/.admin-password
+
+# 运行数据（本地版的明文数据库）
+/todo-server/data.json
+
+# 依赖（体积大，可由 package.json 还原）
+**/node_modules/
+
+# 工具缓存与本地配置（沙箱环境适配产物，含绝对路径与临时状态）
+/todo-netlify/.netlify/
+/todo-netlify/.fake-home/
+/todo-netlify/.npm-cache/
+/todo-worker/.wrangler/
+
+# 构建与打包产物
+/todo-app-native/unpackage/cache/
+/todo-app-native/unpackage/release/
+
+# 本地备份
+/backup/
+
+# 系统与编辑器
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

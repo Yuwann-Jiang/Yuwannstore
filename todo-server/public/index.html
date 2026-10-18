@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>待办事项</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --red: #e5484d;
+    --red-bg: #fdecec;
+    --yellow: #eab308;
+    --yellow-bg: #fdf6e3;
+    --green: #16a34a;
+    --green-bg: #e9f7ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px 60px;
+  }
+  .app { width: 100%; max-width: 680px; }
+  .hidden { display: none !important; }
+
+  h1 { font-size: 26px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  h1 .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .subtitle { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+
+  /* ---------- 登录 / 注册 ---------- */
+  .auth-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 26px 24px;
+    box-shadow: 0 4px 16px rgba(16, 24, 40, 0.06);
+    max-width: 420px;
+    margin: 20px auto 0;
+  }
+  .tabs { display: flex; gap: 6px; background: #f1f3f8; padding: 4px; border-radius: 10px; margin-bottom: 22px; }
+  .tabs button {
+    flex: 1; padding: 9px; border-radius: 7px; background: transparent; color: var(--muted);
+    font-size: 14px; border: none; cursor: pointer; font-family: inherit; transition: all .15s;
+  }
+  .tabs button.active { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  .field-block { margin-bottom: 15px; }
+  .field-block label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  input[type="text"], input[type="password"], input[type="datetime-local"] {
+    width: 100%; padding: 11px 12px; font-size: 15px; border: 1px solid var(--border);
+    border-radius: 9px; background: #fff; color: var(--text); outline: none;
+    transition: border-color .15s, box-shadow .15s; font-family: inherit;
+  }
+  input[type="text"]:focus, input[type="password"]:focus, input[type="datetime-local"]:focus {
+    border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
+  }
+  button {
+    font-family: inherit; font-size: 15px; padding: 11px 18px; border: none;
+    border-radius: 9px; cursor: pointer; transition: background .15s, transform .05s;
+  }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .6; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: #fff; width: 100%; }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+  .msg { font-size: 13.5px; margin-top: 13px; padding: 9px 12px; border-radius: 8px; display: none; }
+  .msg.error { display: block; background: var(--red-bg); color: var(--red); }
+  .msg.ok { display: block; background: var(--green-bg); color: var(--green); }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 16px; line-height: 1.6; }
+
+  /* ---------- 顶部用户栏 ---------- */
+  .userbar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 11px 15px; margin-bottom: 20px; font-size: 14px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+  }
+  .userbar .who { display: flex; align-items: center; gap: 9px; }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;
+  }
+  .userbar .who b { font-weight: 600; }
+  .btn-ghost {
+    background: #f1f3f8; color: var(--text); font-size: 13px; padding: 7px 13px;
+  }
+  .btn-ghost:hover { background: #e6e9f2; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+  .form {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; box-shadow: 0 2px 8px rgba(16, 24, 40, .04); margin-bottom: 20px;
+  }
+  .form label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .form .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .form .field { flex: 1 1 220px; }
+  .form .actions { margin-top: 16px; }
+  .btn-add { background: var(--primary); color: #fff; }
+  .btn-add:hover:not(:disabled) { background: var(--primary-hover); }
+
+  .toolbar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; font-size: 13px; color: var(--muted); gap: 10px; flex-wrap: wrap;
+  }
+  .toolbar .right { display: flex; align-items: center; gap: 10px; }
+  select {
+    padding: 6px 10px; font-size: 13px; border: 1px solid var(--border);
+    border-radius: 8px; background: #fff; color: var(--text); cursor: pointer; font-family: inherit;
+  }
+  .empty { text-align: center; color: var(--muted); padding: 44px 0 30px; font-size: 14px; }
+
+  .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    background: var(--card); border: 1px solid var(--border);
+    border-left: 5px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; display: flex; align-items: center; gap: 14px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+  }
+  .badge {
+    flex: 0 0 auto; width: 42px; height: 42px; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 11px; line-height: 1.2; font-weight: 600; color: #fff;
+  }
+  .badge span { font-size: 14px; }
+  .badge.red { background: var(--red); }
+  .badge.yellow { background: var(--yellow); }
+  .badge.green { background: var(--green); }
+
+  .content { flex: 1 1 auto; min-width: 0; }
+  .title { font-size: 16px; font-weight: 600; word-break: break-word; }
+  .meta { font-size: 12.5px; color: var(--muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .meta .overdue { color: var(--red); font-weight: 600; }
+
+  .btn-done { flex: 0 0 auto; background: var(--red-bg); color: var(--red); font-size: 13px; padding: 8px 14px; }
+  .btn-done:hover { background: #fbdcdc; }
+  .item.removing { opacity: 0; transform: translateX(20px); transition: all .25s ease; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <h1><span class="dot" style="background:var(--primary)"></span>待办事项</h1>
+  <p class="subtitle">登录同一账号，在任何设备上都能看到同步的待办。</p>
+
+  <!-- ================= 登录 / 注册 ================= -->
+  <section id="authView" class="hidden">
+    <div class="auth-card">
+      <div class="tabs">
+        <button id="tabLogin" class="active" type="button">登录</button>
+        <button id="tabRegister" type="button">注册</button>
+      </div>
+
+      <form id="authForm">
+        <div class="field-block">
+          <label for="username">用户名</label>
+          <input type="text" id="username" autocomplete="username" placeholder="3-20 位字母、数字、下划线或中文" />
+        </div>
+        <div class="field-block">
+          <label for="password">密码</label>
+          <input type="password" id="password" autocomplete="current-password" placeholder="至少 6 位" />
+        </div>
+        <button type="submit" class="btn-primary" id="authSubmit">登录</button>
+        <div class="msg" id="authMsg"></div>
+      </form>
+
+      <p class="hint">数据保存在你自己的服务器上，不经过任何第三方。登录状态会记住，下次打开免登录。</p>
+    </div>
+  </section>
+
+  <!-- ================= 待办主界面 ================= -->
+  <section id="appView" class="hidden">
+    <div class="userbar">
+      <div class="who">
+        <div class="avatar" id="avatar">?</div>
+        <span>已登录：<b id="currentUser">-</b></span>
+      </div>
+      <button class="btn-ghost" id="logoutBtn" type="button">退出登录</button>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:var(--red)"></i>红 ≤ 24小时</span>
+      <span><i style="background:var(--yellow)"></i>黄 &gt;24h 且 ≤4天</span>
+      <span><i style="background:var(--green)"></i>绿 &gt;4天</span>
+    </div>
+
+    <form class="form" id="addForm">
+      <div class="row">
+        <div class="field">
+          <label for="text">待办事项</label>
+          <input type="text" id="text" placeholder="例如：提交周报" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="deadline">截止时间</label>
+          <input type="datetime-local" id="deadline" />
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn-add" id="addBtn">＋ 添加待办</button>
+      </div>
+    </form>
+
+    <div class="toolbar">
+      <span id="count">共 0 条待办</span>
+      <span class="right">
+        <span id="syncState">已同步</span>
+        <label style="display:flex;align-items:center;gap:6px;">
+          排序
+          <select id="sort">
+            <option value="time_asc">剩余时间 短→长</option>
+            <option value="time_desc">剩余时间 长→短</option>
+            <option value="created">添加顺序</option>
+          </select>
+        </label>
+      </span>
+    </div>
+
+    <div id="empty" class="empty">暂无待办事项，从上方添加一条吧。</div>
+    <ul class="list" id="list"></ul>
+  </section>
+</div>
+
+<script>
+  // =====================================================================
+  // 部署到 GitHub Pages 等静态托管时，把下面改成你部署好的后端地址，
+  // 例如：const API_BASE = "https://todo-backend.example.com";
+  // 保持空字符串表示与页面同源（本机后端直接提供服务时的默认值）。
+  // =====================================================================
+  const API_BASE = "";
+
+  const TOKEN_KEY = "todo_token";
+  const USER_KEY = "todo_user";
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const POLL_MS = 20000; // 每 20 秒拉取一次，实现跨设备同步
+
+  let token = localStorage.getItem(TOKEN_KEY) || "";
+  let username = localStorage.getItem(USER_KEY) || "";
+  let todos = [];
+  let pollTimer = null;
+  let authMode = "login";
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------- 网络
+  async function api(path, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    if (options.body !== undefined) headers["Content-Type"] = "application/json";
+    if (token) headers["Authorization"] = "Bearer " + token;
+
+    const res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* 忽略空响应 */ }
+    return { status: res.status, data };
+  }
+
+  // ---------------------------------------------------------------- 视图
+  function showAuth() {
+    $("authView").classList.remove("hidden");
+    $("appView").classList.add("hidden");
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function showApp() {
+    $("authView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+    $("currentUser").textContent = username;
+    $("avatar").textContent = username.slice(0, 1).toUpperCase();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(() => loadTodos(true), POLL_MS);
+  }
+
+  function setAuthMsg(text, kind) {
+    const el = $("authMsg");
+    el.textContent = text || "";
+    el.className = "msg" + (kind ? " " + kind : "");
+  }
+
+  function setSyncState(text) {
+    $("syncState").textContent = text;
+  }
+
+  // ---------------------------------------------------------------- 颜色分类
+  // 红：剩余 ≤ 24 小时；黄：>24h 且 ≤4 天；绿：>4 天
+  function classify(deadlineTs) {
+    const remain = deadlineTs - Date.now();
+    if (remain <= DAY_MS) return { remain, level: "red" };
+    if (remain <= 4 * DAY_MS) return { remain, level: "yellow" };
+    return { remain, level: "green" };
+  }
+
+  function fmtRemain(ms) {
+    const neg = ms < 0;
+    const abs = Math.abs(ms);
+    const d = Math.floor(abs / DAY_MS);
+    const h = Math.floor((abs % DAY_MS) / 3600000);
+    const m = Math.floor((abs % 3600000) / 60000);
+    const body = d > 0 ? `${d}天${h}小时` : (h > 0 ? `${h}小时${m}分` : `${m}分`);
+    return neg ? `已超时 ${body}` : body;
+  }
+
+  function fmtDeadline(ts) {
+    return new Date(ts).toLocaleString("zh-CN", {
+      month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  // ---------------------------------------------------------------- 渲染列表
+  function render() {
+    const listEl = $("list");
+    const sort = $("sort").value;
+
+    const items = todos.map((t) => {
+      const c = classify(t.deadline);
+      return Object.assign({}, t, c, { overdue: c.remain < 0 });
+    });
+
+    if (sort === "time_asc") items.sort((a, b) => a.remain - b.remain);
+    else if (sort === "time_desc") items.sort((a, b) => b.remain - a.remain);
+    else items.sort((a, b) => a.created - b.created);
+
+    $("count").textContent = `共 ${todos.length} 条待办`;
+
+    if (items.length === 0) {
+      $("empty").style.display = "block";
+      listEl.innerHTML = "";
+      return;
+    }
+    $("empty").style.display = "none";
+
+    listEl.innerHTML = "";
+    items.forEach((t) => {
+      const li = document.createElement("li");
+      li.className = "item";
+      li.dataset.id = t.id;
+      li.style.borderLeftColor =
+        t.level === "red" ? "var(--red)" :
+        t.level === "yellow" ? "var(--yellow)" : "var(--green)";
+
+      const badge =
+        t.level === "red" ? "<span>!</span>紧急" :
+        t.level === "yellow" ? "<span>•</span>即将" : "<span>✓</span>从容";
+
+      li.innerHTML = `
+        <div class="badge ${t.level}">${badge}</div>
+        <div class="content">
+          <div class="title">${escapeHtml(t.text)}</div>
+          <div class="meta">
+            <span>截止 ${fmtDeadline(t.deadline)}</span>
+            <span class="${t.overdue ? "overdue" : ""}">${fmtRemain(t.remain)}</span>
+          </div>
+        </div>
+        <button class="btn-done" data-action="done">已完成</button>
+      `;
+      listEl.appendChild(li);
+    });
+  }
+
+  // ---------------------------------------------------------------- 业务
+  async function loadTodos(silent) {
+    const { status, data } = await api("/api/todos");
+    if (status === 401) { doLocalLogout(); setAuthMsg("登录已失效，请重新登录", "error"); return; }
+    if (status === 200) {
+      todos = data.todos || [];
+      render();
+      if (silent) setSyncState("已同步 " + new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
+    } else {
+      setSyncState("同步失败");
+    }
+  }
+
+  async function addTodo(text, deadline) {
+    const { status, data } = await api("/api/todos", {
+      method: "POST",
+      body: JSON.stringify({ text, deadline }),
+    });
+    if (status === 201) { await loadTodos(); return true; }
+    setAuthMsg(data.error || "添加失败", "error");
+    return false;
+  }
+
+  async function completeTodo(id) {
+    const li = document.querySelector(`.item[data-id="${id}"]`);
+    if (li) li.classList.add("removing");
+    const { status } = await api("/api/todos/" + id, { method: "DELETE" });
+    if (status === 200) {
+      todos = todos.filter((t) => t.id !== id);
+      render();
+    } else {
+      if (li) li.classList.remove("removing");
+    }
+  }
+
+  function doLocalLogout() {
+    token = ""; username = "";
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    todos = [];
+    showAuth();
+  }
+
+  // ---------------------------------------------------------------- 事件
+  $("tabLogin").addEventListener("click", () => {
+    authMode = "login";
+    $("tabLogin").classList.add("active");
+    $("tabRegister").classList.remove("active");
+    $("authSubmit").textContent = "登录";
+    $("password").setAttribute("autocomplete", "current-password");
+    setAuthMsg("");
+  });
+
+  $("tabRegister").addEventListener("click", () => {
+    authMode = "register";
+    $("tabRegister").classList.add("active");
+    $("tabLogin").classList.remove("active");
+    $("authSubmit").textContent = "注册并登录";
+    $("password").setAttribute("autocomplete", "new-password");
+    setAuthMsg("");
+  });
+
+  $("authForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("authSubmit");
+    const u = $("username").value.trim();
+    const p = $("password").value;
+
+    if (!u || !p) { setAuthMsg("请填写用户名和密码", "error"); return; }
+
+    btn.disabled = true;
+    btn.textContent = "处理中…";
+    setAuthMsg("");
+
+    const { status, data } = await api("/api/" + authMode, {
+      method: "POST",
+      body: JSON.stringify({ username: u, password: p }),
+    });
+
+    btn.disabled = false;
+    btn.textContent = authMode === "login" ? "登录" : "注册并登录";
+
+    if (status === 200 || status === 201) {
+      token = data.token;
+      username = data.username;
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, username);
+      $("password").value = "";
+      setAuthMsg("");
+      showApp();
+      await loadTodos();
+      return;
+    }
+    setAuthMsg((data && data.error) || "操作失败，请重试", "error");
+  });
+
+  $("logoutBtn").addEventListener("click", async () => {
+    try { await api("/api/logout", { method: "POST" }); } catch (e) {}
+    doLocalLogout();
+    setAuthMsg("已退出登录", "ok");
+  });
+
+  $("addForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const textEl = $("text");
+    const dlEl = $("deadline");
+    const text = textEl.value.trim();
+    const deadline = dlEl.value ? new Date(dlEl.value).getTime() : NaN;
+
+    if (!text) { textEl.focus(); return; }
+    if (isNaN(deadline)) { alert("请选择截止时间"); dlEl.focus(); return; }
+
+    $("addBtn").disabled = true;
+    const ok = await addTodo(text, deadline);
+    $("addBtn").disabled = false;
+
+    if (ok) { textEl.value = ""; dlEl.value = ""; textEl.focus(); }
+  });
+
+  $("sort").addEventListener("change", render);
+
+  $("list").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action='done']");
+    if (!btn) return;
+    completeTodo(btn.closest(".item").dataset.id);
+  });
+
+  // 每分钟刷新剩余时间显示
+  setInterval(() => { if (token) render(); }, 60000);
+
+  // ---------------------------------------------------------------- 启动
+  (async function init() {
+    if (!token) { showAuth(); return; }
+    const { status } = await api("/api/me");
+    if (status === 200) {
+      showApp();
+      await loadTodos();
+    } else {
+      doLocalLogout();
+    }
+  })();
+</script>
+</body>
+</html>

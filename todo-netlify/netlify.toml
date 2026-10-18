@@ -1,0 +1,41 @@
+# Netlify 配置
+# 前端页面 + 后端 API 都部署在这个站点上（同源，无跨域问题）。
+
+[build]
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Service Worker 必须不被缓存，否则更新无法生效
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+# 应用清单
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json; charset=utf-8"
+    Cache-Control = "public, max-age=3600"
+
+# 图标可长期缓存
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+# 健康检查：访问 /api 时补齐斜杠
+[[redirects]]
+  from = "/api"
+  to = "/api/"
+  status = 301
+
+# 兜底：任何未匹配的路径都回退到首页，避免用户看到 Netlify 的 404 页面。
+# 放在最后；/api/* 由函数自身的路由（config.path）优先处理。
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>待办事项</title>
+
+<!-- ===== PWA：可安装应用 ===== -->
+<!-- 原生 App 内不需要 PWA 清单 -->
+<meta name="theme-color" content="#4f46e5" />
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+<!-- iOS 独立应用模式（添加到主屏幕后全屏运行、状态栏样式） -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="待办" />
+
+<!-- 系统深色模式时也保持一致的配色 -->
+<meta name="color-scheme" content="light" />
+<meta name="description" content="带截止时间、到期着色与邮件提醒的待办清单，登录同一账号即可多设备同步。" />
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #1f2933;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --primary: #4f46e5;
+    --primary-hover: #4338ca;
+    --red: #e5484d;
+    --red-bg: #fdecec;
+    --yellow: #eab308;
+    --yellow-bg: #fdf6e3;
+    --green: #16a34a;
+    --green-bg: #e9f7ef;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px 60px;
+  }
+  .app { width: 100%; max-width: 680px; }
+  .hidden { display: none !important; }
+
+  h1 { font-size: 26px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  h1 .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .subtitle { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+
+  /* ---------- 登录 / 注册 ---------- */
+  .auth-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 26px 24px;
+    box-shadow: 0 4px 16px rgba(16, 24, 40, 0.06);
+    max-width: 420px;
+    margin: 20px auto 0;
+  }
+  .tabs { display: flex; gap: 6px; background: #f1f3f8; padding: 4px; border-radius: 10px; margin-bottom: 22px; }
+  .tabs button {
+    flex: 1; padding: 9px; border-radius: 7px; background: transparent; color: var(--muted);
+    font-size: 14px; border: none; cursor: pointer; font-family: inherit; transition: all .15s;
+  }
+  .tabs button.active { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+
+  .field-block { margin-bottom: 15px; }
+  .field-block label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  input[type="text"], input[type="password"], input[type="datetime-local"] {
+    width: 100%; padding: 11px 12px; font-size: 15px; border: 1px solid var(--border);
+    border-radius: 9px; background: #fff; color: var(--text); outline: none;
+    transition: border-color .15s, box-shadow .15s; font-family: inherit;
+  }
+  input[type="text"]:focus, input[type="password"]:focus, input[type="datetime-local"]:focus {
+    border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
+  }
+  button {
+    font-family: inherit; font-size: 15px; padding: 11px 18px; border: none;
+    border-radius: 9px; cursor: pointer; transition: background .15s, transform .05s;
+  }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .6; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: #fff; width: 100%; }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+  .msg { font-size: 13.5px; margin-top: 13px; padding: 9px 12px; border-radius: 8px; display: none; }
+  .msg.error { display: block; background: var(--red-bg); color: var(--red); }
+  .msg.ok { display: block; background: var(--green-bg); color: var(--green); }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 16px; line-height: 1.6; }
+
+  /* ---------- 顶部用户栏 ---------- */
+  .userbar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 11px 15px; margin-bottom: 20px; font-size: 14px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+  }
+  .userbar .who { display: flex; align-items: center; gap: 9px; }
+  .avatar {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600;
+  }
+  .userbar .who b { font-weight: 600; }
+  .userbar .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ---------- 离线提示条 ---------- */
+  .offline-bar {
+    background: #fdf6e3; color: #92400e; border: 1px solid #fde68a;
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+    font-size: 13.5px; text-align: center;
+  }
+  .btn-ghost {
+    background: #f1f3f8; color: var(--text); font-size: 13px; padding: 7px 13px;
+  }
+  .btn-ghost:hover { background: #e6e9f2; }
+
+  /* ---------- 提醒邮箱 ---------- */
+  .emailbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 11px 15px; margin-bottom: 12px; font-size: 14px; flex-wrap: wrap;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+  }
+  .emailbar .emailinfo { display: flex; align-items: center; gap: 8px; }
+  .emailbar #emailText { font-weight: 600; }
+  .emicon { font-size: 15px; }
+
+  .emailform {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 15px; margin-bottom: 16px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+  }
+  .emailform .efrow { display: flex; gap: 9px; flex-wrap: wrap; }
+  .emailform .efrow input { flex: 1 1 220px; }
+  .btn-inline { width: auto; padding: 11px 18px; }
+  .ehint { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; line-height: 1.6; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; font-size: 13px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+
+  .form {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; box-shadow: 0 2px 8px rgba(16, 24, 40, .04); margin-bottom: 20px;
+  }
+  .form label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .form .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .form .field { flex: 1 1 220px; }
+  .form .actions { margin-top: 16px; }
+  .btn-add { background: var(--primary); color: #fff; }
+  .btn-add:hover:not(:disabled) { background: var(--primary-hover); }
+
+  .toolbar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; font-size: 13px; color: var(--muted); gap: 10px; flex-wrap: wrap;
+  }
+  .toolbar .right { display: flex; align-items: center; gap: 10px; }
+  select {
+    padding: 6px 10px; font-size: 13px; border: 1px solid var(--border);
+    border-radius: 8px; background: #fff; color: var(--text); cursor: pointer; font-family: inherit;
+  }
+  .empty { text-align: center; color: var(--muted); padding: 44px 0 30px; font-size: 14px; }
+
+  .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .item {
+    background: var(--card); border: 1px solid var(--border);
+    border-left: 5px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; display: flex; align-items: center; gap: 14px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+  }
+  .badge {
+    flex: 0 0 auto; width: 42px; height: 42px; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 11px; line-height: 1.2; font-weight: 600; color: #fff;
+  }
+  .badge span { font-size: 14px; }
+  .badge.red { background: var(--red); }
+  .badge.yellow { background: var(--yellow); }
+  .badge.green { background: var(--green); }
+
+  .content { flex: 1 1 auto; min-width: 0; }
+  .title { font-size: 16px; font-weight: 600; word-break: break-word; }
+  .meta { font-size: 12.5px; color: var(--muted); margin-top: 4px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .meta .overdue { color: var(--red); font-weight: 600; }
+
+  .btn-done { flex: 0 0 auto; background: var(--red-bg); color: var(--red); font-size: 13px; padding: 8px 14px; }
+  .btn-done:hover { background: #fbdcdc; }
+  .item.removing { opacity: 0; transform: translateX(20px); transition: all .25s ease; }
+
+  /* ---------- 完成热力图（GitHub 贡献图风格） ---------- */
+  .hm-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px; margin-top: 22px;
+    box-shadow: 0 2px 8px rgba(16, 24, 40, .04);
+  }
+  .hm-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+  }
+  .hm-title { font-size: 15px; font-weight: 600; }
+  .hm-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .hm-scale { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
+
+  .hm-scroll { overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+  .hm-inner { display: inline-block; }
+
+  .hm-months { display: flex; gap: 3px; margin-left: 24px; margin-bottom: 5px; height: 13px; }
+  .hm-month { width: 12px; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+
+  .hm-body { display: flex; gap: 5px; }
+  .hm-weekdays {
+    display: grid; grid-template-rows: repeat(7, 12px); gap: 3px;
+    font-size: 10px; color: var(--muted); width: 19px; text-align: right;
+  }
+  .hm-weekdays span { line-height: 12px; }
+
+  .hm-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 12px); gap: 3px; }
+
+  .hm-cell {
+    width: 12px; height: 12px; border-radius: 3px; background: #ebedf0;
+    display: block; padding: 0; border: none;
+    transition: outline .1s;
+  }
+  .hm-grid .hm-cell { cursor: pointer; }
+  .hm-grid .hm-cell:hover { outline: 1.5px solid var(--primary); outline-offset: 1px; }
+  .hm-cell.lv0 { background: #ebedf0; }
+  .hm-cell.lv1 { background: #9be9a8; }
+  .hm-cell.lv2 { background: #40c463; }
+  .hm-cell.lv3 { background: #30a14e; }
+  .hm-cell.lv4 { background: #216e39; }
+  .hm-cell.future { background: transparent; cursor: default; }
+  .hm-cell.today { outline: 1.5px solid var(--primary); outline-offset: 1px; }
+  .hm-cell.sel { outline: 2px solid var(--text); outline-offset: 1px; }
+
+  .hm-detail {
+    margin-top: 14px; padding: 13px 15px; border-radius: 10px;
+    background: #f7f8fc; border: 1px solid var(--border); font-size: 13px;
+  }
+  .hm-detail .hm-date { font-weight: 600; margin-bottom: 6px; }
+  .hm-detail .hm-none { color: var(--muted); }
+  .hm-detail ul { margin: 8px 0 0; padding-left: 20px; color: var(--text); }
+  .hm-detail li { margin: 4px 0; line-height: 1.5; }
+  .hm-detail .hm-late { color: var(--red); font-size: 11.5px; }
+
+  @media (max-width: 560px) {
+    .hm-card { padding: 14px 12px; }
+    .hm-grid { grid-template-rows: repeat(7, 10px); gap: 2.5px; }
+    .hm-grid .hm-cell { width: 10px; height: 10px; }
+    .hm-weekdays { grid-template-rows: repeat(7, 10px); gap: 2.5px; }
+    .hm-weekdays span { line-height: 10px; }
+    .hm-months { gap: 2.5px; margin-left: 21px; }
+    .hm-month { width: 10px; }
+  }
+
+  /* ---------- 管理后台 ---------- */
+  .admin-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+  }
+  .admin-title { font-size: 20px; font-weight: 600; }
+  .admin-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+  .admin-stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 10px; margin-bottom: 16px;
+  }
+  .admin-stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; text-align: center;
+  }
+  .admin-stat .n { font-size: 21px; font-weight: 700; color: var(--primary); }
+  .admin-stat .l { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+  .admin-search { margin-bottom: 12px; }
+
+  .admin-list { display: flex; flex-direction: column; gap: 7px; }
+  .admin-user {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 11px 13px; display: flex; align-items: center; gap: 11px;
+    cursor: pointer; text-align: left; width: 100%; font-family: inherit;
+    transition: border-color .12s, background .12s;
+  }
+  .admin-user:hover { border-color: var(--primary); background: #fafbff; }
+  .admin-user .uavatar {
+    width: 32px; height: 32px; border-radius: 50%; flex: 0 0 auto;
+    background: var(--primary); color: #fff; display: flex;
+    align-items: center; justify-content: center; font-size: 14px; font-weight: 600;
+  }
+  .admin-user .uavatar.adm { background: #b45309; }
+  .admin-user .uinfo { flex: 1 1 auto; min-width: 0; }
+  .admin-user .uname { font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .admin-user .umeta { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .admin-user .ucount { font-size: 12px; color: var(--muted); text-align: right; flex: 0 0 auto; }
+  .admin-user .ucount b { color: var(--text); font-size: 14px; }
+  .badge-admin {
+    font-size: 10px; background: #fef3c7; color: #92400e;
+    padding: 1px 6px; border-radius: 5px; font-weight: 600;
+  }
+
+  .admin-detail {
+    margin-top: 16px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .admin-detail h3 { margin: 0 0 4px; font-size: 16px; }
+  .admin-detail .dsub { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+  .admin-detail h4 { margin: 16px 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .admin-detail ul { margin: 0; padding-left: 19px; font-size: 13.5px; }
+  .admin-detail li { margin: 5px 0; line-height: 1.5; }
+  .admin-detail .empty-mini { font-size: 13px; color: var(--muted); }
+
+  /* ---------- 待办编辑 ---------- */
+  .item-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+  .btn-edit {
+    background: #f1f3f8; color: var(--text); font-size: 14px;
+    padding: 7px 10px; border-radius: 8px; line-height: 1;
+  }
+  .btn-edit:hover { background: #e6e9f2; }
+
+  .item.editing {
+    display: block;
+    background: #fbfcff;
+    border: 1.5px solid var(--primary);
+    padding: 14px 16px;
+  }
+  .edit-form { display: flex; flex-direction: column; gap: 6px; }
+  .edit-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .edit-form input {
+    width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit;
+    border: 1px solid var(--border); border-radius: 9px; background: #fff;
+    color: var(--text); outline: none;
+  }
+  .edit-form input:focus {
+    border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
+  }
+  .edit-actions { display: flex; gap: 9px; margin-top: 12px; }
+  .btn-save {
+    background: var(--primary); color: #fff; font-size: 14px; padding: 9px 20px;
+  }
+  .btn-save:hover:not(:disabled) { background: var(--primary-hover); }
+  .btn-save:disabled { opacity: .6; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 离线提示条 -->
+  <div class="offline-bar hidden" id="offlineBar">
+    📴 当前处于离线状态，显示的是上次同步的内容
+  </div>
+
+  <h1><span class="dot" style="background:var(--primary)"></span>待办事项</h1>
+  <p class="subtitle">登录同一账号，在任何设备上都能看到同步的待办。</p>
+
+  <!-- ================= 登录 / 注册 ================= -->
+  <section id="authView" class="hidden">
+    <div class="auth-card">
+      <div class="tabs">
+        <button id="tabLogin" class="active" type="button">登录</button>
+        <button id="tabRegister" type="button">注册</button>
+      </div>
+
+      <form id="authForm">
+        <div class="field-block">
+          <label for="username">用户名</label>
+          <input type="text" id="username" autocomplete="username" placeholder="3-20 位字母、数字、下划线或中文" />
+        </div>
+        <div class="field-block">
+          <label for="password">密码</label>
+          <input type="password" id="password" autocomplete="current-password" placeholder="至少 6 位" />
+        </div>
+        <button type="submit" class="btn-primary" id="authSubmit">登录</button>
+        <div class="msg" id="authMsg"></div>
+      </form>
+
+      <p class="hint">数据保存在你自己的服务器上，不经过任何第三方。登录状态会记住，下次打开免登录。</p>
+    </div>
+  </section>
+
+  <!-- ================= 待办主界面 ================= -->
+  <section id="appView" class="hidden">
+    <div class="userbar">
+      <div class="who">
+        <div class="avatar" id="avatar">?</div>
+        <span>已登录：<b id="currentUser">-</b></span>
+      </div>
+      <div class="actions">
+        <button class="btn-ghost hidden" id="adminBtn" type="button">👑 管理后台</button>
+        <button class="btn-ghost hidden" id="installBtn" type="button">📲 安装应用</button>
+        <button class="btn-ghost" id="logoutBtn" type="button">退出登录</button>
+      </div>
+    </div>
+
+    <!-- 到期提醒邮箱 -->
+    <div class="emailbar">
+      <div class="emailinfo">
+        <span class="emicon">📧</span>
+        <span>到期提醒邮箱：<b id="emailText">未绑定</b></span>
+      </div>
+      <button class="btn-ghost" id="emailToggle" type="button">绑定邮箱</button>
+    </div>
+    <div class="emailform hidden" id="emailFormWrap">
+      <div class="efrow">
+        <input type="text" id="emailInput" placeholder="填一个常用邮箱，例如 xxx@qq.com" autocomplete="email" />
+        <button class="btn-primary btn-inline" id="emailSave" type="button">保存</button>
+        <button class="btn-ghost" id="emailCancel" type="button">取消</button>
+      </div>
+      <div class="msg" id="emailMsg"></div>
+      <p class="ehint">待办剩余时间低于 1 天时，会自动往这个邮箱发一封提醒邮件（每条待办只提醒一次）。</p>
+    </div>
+
+    <div class="legend">
+      <span><i style="background:var(--red)"></i>红 ≤ 24小时</span>
+      <span><i style="background:var(--yellow)"></i>黄 &gt;24h 且 ≤4天</span>
+      <span><i style="background:var(--green)"></i>绿 &gt;4天</span>
+    </div>
+
+    <form class="form" id="addForm">
+      <div class="row">
+        <div class="field">
+          <label for="text">待办事项</label>
+          <input type="text" id="text" placeholder="例如：提交周报" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="deadline">截止时间</label>
+          <input type="datetime-local" id="deadline" />
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn-add" id="addBtn">＋ 添加待办</button>
+      </div>
+    </form>
+
+    <div class="toolbar">
+      <span id="count">共 0 条待办</span>
+      <span class="right">
+        <span id="syncState">已同步</span>
+        <label style="display:flex;align-items:center;gap:6px;">
+          排序
+          <select id="sort">
+            <option value="time_asc">剩余时间 短→长</option>
+            <option value="time_desc">剩余时间 长→短</option>
+            <option value="created">添加顺序</option>
+          </select>
+        </label>
+      </span>
+    </div>
+
+    <div id="empty" class="empty">暂无待办事项，从上方添加一条吧。</div>
+    <ul class="list" id="list"></ul>
+
+    <!-- ================= 完成热力图 ================= -->
+    <section class="hm-card">
+      <div class="hm-head">
+        <div>
+          <div class="hm-title">完成记录</div>
+          <div class="hm-sub" id="hmSummary">加载中…</div>
+        </div>
+        <div class="hm-scale">
+          <span>少</span>
+          <i class="hm-cell lv0"></i><i class="hm-cell lv1"></i>
+          <i class="hm-cell lv2"></i><i class="hm-cell lv3"></i><i class="hm-cell lv4"></i>
+          <span>多</span>
+        </div>
+      </div>
+
+      <div class="hm-scroll">
+        <div class="hm-inner">
+          <div class="hm-months" id="hmMonths"></div>
+          <div class="hm-body">
+            <div class="hm-weekdays">
+              <span></span><span>二</span><span></span><span>四</span>
+              <span></span><span>六</span><span></span>
+            </div>
+            <div class="hm-grid" id="hmGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hm-detail hidden" id="hmDetail"></div>
+    </section>
+  </section>
+
+  <!-- ================= 管理后台（仅管理员可见） ================= -->
+  <section id="adminView" class="hidden">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title">👑 管理后台</div>
+        <div class="admin-sub" id="adminSub">正在加载…</div>
+      </div>
+      <button class="btn-ghost" id="adminBack" type="button">← 返回待办</button>
+    </div>
+
+    <div class="admin-stats" id="adminStats"></div>
+
+    <div class="admin-search">
+      <input type="text" id="adminSearch" placeholder="搜索用户名或邮箱…" autocomplete="off" />
+    </div>
+
+    <div class="admin-list" id="adminList"></div>
+
+    <div class="admin-detail hidden" id="adminDetail"></div>
+  </section>
+</div>
+
+<script>
+  // ===== 由 build-native-html.py 自动注入：原生 App 运行配置 =====
+  window.__API_BASE__ = "https://yuwann-todo.netlify.app";
+  window.__NATIVE_APP__ = true;
+</script>
+<script>
+  // =====================================================================
+  // 后端地址自动判定：
+  //   - 页面由 Netlify 或本机后端直接提供服务时，与 API 同源 → 用空字符串
+  //   - 页面托管在 GitHub Pages（不同域名）时 → 指向 Netlify 上的 API
+  //   - 打包成原生 App 时，由注入的 window.__API_BASE__ 指定
+  // =====================================================================
+  const NETLIFY_API_BASE = "https://yuwann-todo.netlify.app";
+  const SAME_ORIGIN =
+    location.hostname === "localhost" ||
+    location.hostname === "127.0.0.1" ||
+    location.hostname.endsWith(".netlify.app");
+  const API_BASE = window.__API_BASE__ || (SAME_ORIGIN ? "" : NETLIFY_API_BASE);
+
+  const TOKEN_KEY = "todo_token";
+  const USER_KEY = "todo_user";
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const POLL_MS = 20000; // 每 20 秒拉取一次，实现跨设备同步
+
+  let token = localStorage.getItem(TOKEN_KEY) || "";
+  let username = localStorage.getItem(USER_KEY) || "";
+  let todos = [];
+  let pollTimer = null;
+  let authMode = "login";
+
+  // 正在编辑的待办 id 与草稿值。
+  // 草稿保存在这里而不是只放在 DOM 里，这样 20 秒一次的轮询重绘不会把用户
+  // 正在输入的内容冲掉。
+  let editingId = null;
+  let editDraft = { text: "", deadline: "", original: null };
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------- 网络
+  async function api(path, options = {}) {
+    const headers = Object.assign({}, options.headers || {});
+    if (options.body !== undefined) headers["Content-Type"] = "application/json";
+    if (token) headers["Authorization"] = "Bearer " + token;
+
+    const res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* 忽略空响应 */ }
+    return { status: res.status, data };
+  }
+
+  // ---------------------------------------------------------------- 视图
+  function showAuth() {
+    $("authView").classList.remove("hidden");
+    $("appView").classList.add("hidden");
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function showApp() {
+    $("authView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+    $("currentUser").textContent = username;
+    $("avatar").textContent = username.slice(0, 1).toUpperCase();
+    $("emailFormWrap").classList.add("hidden");
+    setEmailMsg("");
+    loadProfile();
+    loadCompletions();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(() => loadTodos(true), POLL_MS);
+  }
+
+  // ---------------- 提醒邮箱 ----------------
+  let boundEmail = null;
+
+  function setEmailMsg(text, kind) {
+    const el = $("emailMsg");
+    el.textContent = text || "";
+    el.className = "msg" + (kind ? " " + kind : "");
+  }
+
+  function renderEmail() {
+    $("emailText").textContent = boundEmail || "未绑定";
+    $("emailToggle").textContent = boundEmail ? "修改邮箱" : "绑定邮箱";
+  }
+
+  async function loadProfile() {
+    const { status, data } = await api("/api/profile");
+    if (status === 200) {
+      boundEmail = data.email || null;
+      renderEmail();
+      // 管理员入口只对管理员显示（真正的权限校验在服务端）
+      isAdmin = data.isAdmin === true;
+      $("adminBtn").classList.toggle("hidden", !isAdmin);
+    }
+  }
+
+  async function saveEmail(value) {
+    const { status, data } = await api("/api/profile", {
+      method: "POST",
+      body: JSON.stringify({ email: value }),
+    });
+    if (status === 200) {
+      boundEmail = data.email || null;
+      renderEmail();
+      return true;
+    }
+    setEmailMsg((data && data.error) || "保存失败", "error");
+    return false;
+  }
+
+  function setAuthMsg(text, kind) {
+    const el = $("authMsg");
+    el.textContent = text || "";
+    el.className = "msg" + (kind ? " " + kind : "");
+  }
+
+  function setSyncState(text) {
+    $("syncState").textContent = text;
+  }
+
+  // ---------------------------------------------------------------- 颜色分类
+  // 红：剩余 ≤ 24 小时；黄：>24h 且 ≤4 天；绿：>4 天
+  function classify(deadlineTs) {
+    const remain = deadlineTs - Date.now();
+    if (remain <= DAY_MS) return { remain, level: "red" };
+    if (remain <= 4 * DAY_MS) return { remain, level: "yellow" };
+    return { remain, level: "green" };
+  }
+
+  function fmtRemain(ms) {
+    const neg = ms < 0;
+    const abs = Math.abs(ms);
+    const d = Math.floor(abs / DAY_MS);
+    const h = Math.floor((abs % DAY_MS) / 3600000);
+    const m = Math.floor((abs % 3600000) / 60000);
+    const body = d > 0 ? `${d}天${h}小时` : (h > 0 ? `${h}小时${m}分` : `${m}分`);
+    return neg ? `已超时 ${body}` : body;
+  }
+
+  function fmtDeadline(ts) {
+    return new Date(ts).toLocaleString("zh-CN", {
+      month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  // ---------------------------------------------------------------- 渲染列表
+  function render() {
+    const listEl = $("list");
+    const sort = $("sort").value;
+
+    const items = todos.map((t) => {
+      const c = classify(t.deadline);
+      return Object.assign({}, t, c, { overdue: c.remain < 0 });
+    });
+
+    if (sort === "time_asc") items.sort((a, b) => a.remain - b.remain);
+    else if (sort === "time_desc") items.sort((a, b) => b.remain - a.remain);
+    else items.sort((a, b) => a.created - b.created);
+
+    $("count").textContent = `共 ${todos.length} 条待办`;
+
+    if (items.length === 0) {
+      $("empty").style.display = "block";
+      listEl.innerHTML = "";
+      return;
+    }
+    $("empty").style.display = "none";
+
+    listEl.innerHTML = "";
+    items.forEach((t) => {
+      const li = document.createElement("li");
+      li.className = "item";
+      li.dataset.id = t.id;
+      li.style.borderLeftColor =
+        t.level === "red" ? "var(--red)" :
+        t.level === "yellow" ? "var(--yellow)" : "var(--green)";
+
+      // 正在编辑的这一条：渲染成编辑表单（草稿值优先，避免被轮询刷掉）
+      if (editingId === t.id) {
+        li.classList.add("editing");
+        li.style.borderLeftColor = "var(--primary)";
+        li.innerHTML = `
+          <div class="edit-form">
+            <label class="edit-label">待办名称</label>
+            <input type="text" class="edit-text" id="editText" value="${escapeHtml(editDraft.text)}" />
+            <label class="edit-label">截止时间</label>
+            <input type="datetime-local" class="edit-deadline" id="editDeadline" value="${editDraft.deadline}" />
+            <div class="edit-actions">
+              <button class="btn-save" data-action="save" type="button">保存</button>
+              <button class="btn-ghost" data-action="cancel" type="button">取消</button>
+            </div>
+          </div>
+        `;
+        listEl.appendChild(li);
+        return;
+      }
+
+      const badge =
+        t.level === "red" ? "<span>!</span>紧急" :
+        t.level === "yellow" ? "<span>•</span>即将" : "<span>✓</span>从容";
+
+      li.innerHTML = `
+        <div class="badge ${t.level}">${badge}</div>
+        <div class="content">
+          <div class="title">${escapeHtml(t.text)}</div>
+          <div class="meta">
+            <span>截止 ${fmtDeadline(t.deadline)}</span>
+            <span class="${t.overdue ? "overdue" : ""}">${fmtRemain(t.remain)}</span>
+            ${t.updatedAt ? '<span title="修改过">✎ 已编辑</span>' : ""}
+          </div>
+        </div>
+        <div class="item-actions">
+          <button class="btn-edit" data-action="edit" type="button" title="编辑">✏️</button>
+          <button class="btn-done" data-action="done" type="button">已完成</button>
+        </div>
+      `;
+      listEl.appendChild(li);
+    });
+  }
+
+  // ---------------------------------------------------------------- 业务
+  // ---------------- 离线数据缓存 ----------------
+  // 把最近一次成功同步的待办存到本地，断网时仍可查看
+  const CACHE_KEY = "todo_cache_" + (localStorage.getItem(USER_KEY) || "anon");
+
+  function saveLocalCache(list) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), todos: list })); } catch (e) {}
+  }
+
+  function readLocalCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      return d && Array.isArray(d.todos) ? d : null;
+    } catch (e) { return null; }
+  }
+
+  async function loadTodos(silent) {
+    const { status, data } = await api("/api/todos");
+    if (status === 401) { doLocalLogout(); setAuthMsg("登录已失效，请重新登录", "error"); return; }
+
+    if (status === 200) {
+      todos = data.todos || [];
+      saveLocalCache(todos);
+      setOffline(false);
+      render();
+      if (silent) setSyncState("已同步 " + new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
+      return;
+    }
+
+    // 网络不通时：回退到本地缓存
+    const cached = readLocalCache();
+    if (cached) {
+      todos = cached.todos;
+      render();
+      setOffline(true);
+      setSyncState("离线（缓存于 " + new Date(cached.at).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) + "）");
+    } else {
+      setSyncState("同步失败");
+    }
+  }
+
+  // ---------------- 在线 / 离线状态 ----------------
+  function setOffline(isOffline) {
+    $("offlineBar").classList.toggle("hidden", !isOffline);
+  }
+
+  function refreshOnlineState() {
+    if (navigator.onLine) {
+      setOffline(false);
+      if (token) loadTodos(true);
+    } else {
+      setOffline(true);
+      setSyncState("离线");
+    }
+  }
+
+  window.addEventListener("online", refreshOnlineState);
+  window.addEventListener("offline", refreshOnlineState);
+
+  async function addTodo(text, deadline) {
+    const { status, data } = await api("/api/todos", {
+      method: "POST",
+      body: JSON.stringify({ text, deadline }),
+    });
+    if (status === 201) { await loadTodos(); return true; }
+    setAuthMsg(data.error || "添加失败", "error");
+    return false;
+  }
+
+  async function completeTodo(id) {
+    const li = document.querySelector(`.item[data-id="${id}"]`);
+    if (li) li.classList.add("removing");
+    const { status } = await api("/api/todos/" + id, { method: "DELETE" });
+    if (status === 200) {
+      todos = todos.filter((t) => t.id !== id);
+      render();
+      // 完成后刷新热力图，让新记录立刻体现出来
+      loadCompletions(true);
+    } else {
+      if (li) li.classList.remove("removing");
+    }
+  }
+
+  // =====================================================================
+  // 编辑待办（改名称与截止时间）
+  // =====================================================================
+
+  // 毫秒时间戳 → <input type="datetime-local"> 需要的本地时间字符串
+  function toDatetimeLocal(ts) {
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+      "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+
+  function startEdit(id) {
+    const t = todos.find((x) => x.id === id);
+    if (!t) return;
+    editingId = id;
+    editDraft = {
+      text: t.text,
+      deadline: toDatetimeLocal(t.deadline),
+      original: { text: t.text, deadline: t.deadline },
+    };
+    render();
+    // 渲染后聚焦并全选，方便直接改
+    const input = $("editText");
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    editDraft = { text: "", deadline: "", original: null };
+    render();
+  }
+
+  async function saveEdit(id) {
+    const text = (editDraft.text || "").trim();
+    if (!text) { alert("待办名称不能为空"); return; }
+
+    const dlMs = editDraft.deadline ? new Date(editDraft.deadline).getTime() : NaN;
+    if (isNaN(dlMs)) { alert("请选择有效的截止时间"); return; }
+
+    const orig = editDraft.original || {};
+    const payload = {};
+    if (text !== orig.text) payload.text = text;
+    if (dlMs !== orig.deadline) payload.deadline = dlMs;
+
+    // 什么都没改就直接退出
+    if (Object.keys(payload).length === 0) { cancelEdit(); return; }
+
+    const btn = document.querySelector('.item.editing [data-action="save"]');
+    if (btn) { btn.disabled = true; btn.textContent = "保存中…"; }
+
+    const { status, data } = await api("/api/todos/" + id, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+
+    if (status === 200) {
+      editingId = null;
+      editDraft = { text: "", deadline: "", original: null };
+      // 直接用服务端返回的列表渲染，避免再多发一次请求
+      if (Array.isArray(data.todos)) {
+        todos = data.todos;
+        saveLocalCache(todos);
+      }
+      render();
+      if (payload.deadline !== undefined) {
+        setSyncState("已修改截止时间，到期提醒将按新时间重新计算");
+      }
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = "保存"; }
+      alert((data && data.error) || "保存失败，请稍后重试");
+    }
+  }
+
+  // =====================================================================
+  // 完成热力图（GitHub 贡献图风格）
+  // =====================================================================
+  let completions = [];
+  const HM_WEEKS = 53;      // 展示最近 53 周
+  const CACHE_COMPLETIONS = "todo_completions_cache";
+
+  function dateKey(d) {
+    return d.getFullYear() + "-" +
+      String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  // 完成数目 → 颜色等级（0-4）
+  function levelOf(n) {
+    if (n <= 0) return 0;
+    if (n === 1) return 1;
+    if (n <= 3) return 2;
+    if (n <= 5) return 3;
+    return 4;
+  }
+
+  function groupByDay() {
+    const map = new Map();
+    for (const c of completions) {
+      if (!c || typeof c.at !== "number") continue;
+      const k = dateKey(new Date(c.at));
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(c);
+    }
+    // 每天内按完成时间排序
+    for (const arr of map.values()) arr.sort((a, b) => a.at - b.at);
+    return map;
+  }
+
+  async function loadCompletions(silent) {
+    const { status, data } = await api("/api/completions");
+    if (status === 200) {
+      completions = data.completions || [];
+      try { localStorage.setItem(CACHE_COMPLETIONS, JSON.stringify(completions)); } catch (e) {}
+      renderHeatmap();
+      return;
+    }
+    // 离线时用本地缓存
+    if (!silent) {
+      try {
+        const raw = localStorage.getItem(CACHE_COMPLETIONS);
+        if (raw) { completions = JSON.parse(raw) || []; renderHeatmap(); }
+      } catch (e) {}
+    }
+  }
+
+  // 连续完成天数（从今天或昨天往前推）
+  function calcStreak(byDay) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    // 今天没完成就从昨天开始算，避免"今天还没做"就断掉连续记录
+    if (!byDay.has(dateKey(d))) d.setDate(d.getDate() - 1);
+    let streak = 0;
+    while (byDay.has(dateKey(d))) {
+      streak++;
+      d.setDate(d.getDate() - 1);
+    }
+    return streak;
+  }
+
+  function renderHeatmap() {
+    const grid = $("hmGrid");
+    const monthsEl = $("hmMonths");
+    if (!grid || !monthsEl) return;
+
+    const byDay = groupByDay();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 本周一（周一为一周起点）
+    const monday = new Date(today);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+
+    // 起始周
+    const start = new Date(monday);
+    start.setDate(start.getDate() - (HM_WEEKS - 1) * 7);
+
+    grid.innerHTML = "";
+    monthsEl.innerHTML = "";
+
+    let prevMonth = -1;
+    let total = 0;
+
+    for (let w = 0; w < HM_WEEKS; w++) {
+      const weekStart = new Date(start);
+      weekStart.setDate(weekStart.getDate() + w * 7);
+
+      // 月份标签
+      const mLabel = document.createElement("div");
+      mLabel.className = "hm-month";
+      const mo = weekStart.getMonth();
+      if (mo !== prevMonth) {
+        mLabel.textContent = (mo + 1) + "月";
+        prevMonth = mo;
+      }
+      monthsEl.appendChild(mLabel);
+
+      // 一周 7 天
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(weekStart);
+        day.setDate(day.getDate() + d);
+
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "hm-cell";
+
+        if (day > today) {
+          cell.classList.add("future");
+          cell.disabled = true;
+          grid.appendChild(cell);
+          continue;
+        }
+
+        const k = dateKey(day);
+        const items = byDay.get(k) || [];
+        const n = items.length;
+        total += n;
+        cell.classList.add("lv" + levelOf(n));
+        if (k === dateKey(today)) cell.classList.add("today");
+
+        const tip = k + "：" + (n ? "完成 " + n + " 项" : "无完成");
+        cell.title = tip;
+        cell.dataset.date = k;
+        cell.setAttribute("aria-label", tip);
+        grid.appendChild(cell);
+      }
+    }
+
+    // 概览
+    const streak = calcStreak(byDay);
+    const activeDays = [...byDay.keys()].length;
+    $("hmSummary").textContent =
+      "近一年完成 " + total + " 项 · 有记录 " + activeDays + " 天" +
+      (streak > 0 ? " · 连续 " + streak + " 天" : "");
+  }
+
+  function showDayDetail(k) {
+    const box = $("hmDetail");
+    const byDay = groupByDay();
+    const items = byDay.get(k) || [];
+
+    const d = new Date(k + "T00:00:00");
+    const week = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
+    const head = d.getFullYear() + " 年 " + (d.getMonth() + 1) + " 月 " + d.getDate() + " 日 周" + week;
+
+    if (items.length === 0) {
+      box.innerHTML = '<div class="hm-date">' + head + '</div>' +
+        '<div class="hm-none">这一天没有完成任何待办</div>';
+    } else {
+      const late = items.filter((x) => x.onTime === false).length;
+      box.innerHTML =
+        '<div class="hm-date">' + head + ' · 完成 ' + items.length + ' 项' +
+        (late > 0 ? '（其中 ' + late + ' 项超时完成）' : '') + '</div>' +
+        '<ul>' +
+        items.map((x) => {
+          const t = new Date(x.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+          const mark = x.onTime === false ? ' <span class="hm-late">超时</span>' : "";
+          return "<li>" + escapeHtml(x.text || "（无标题）") + "　<span style='color:var(--muted)'>" + t + "</span>" + mark + "</li>";
+        }).join("") +
+        "</ul>";
+    }
+
+    box.classList.remove("hidden");
+    // 选中态
+    document.querySelectorAll(".hm-cell.sel").forEach((el) => el.classList.remove("sel"));
+    const sel = document.querySelector('.hm-cell[data-date="' + k + '"]');
+    if (sel) sel.classList.add("sel");
+  }
+
+  function doLocalLogout() {
+    token = ""; username = "";
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    todos = [];
+    // 退出时清掉管理员状态，避免下一个登录者看到残留入口
+    isAdmin = false;
+    adminUsers = [];
+    $("adminBtn").classList.add("hidden");
+    $("adminView").classList.add("hidden");
+    showAuth();
+  }
+
+  // =====================================================================
+  // 管理后台（仅管理员可见）
+  //
+  // 安全说明：这里的显示/隐藏只是交互层面；真正的权限校验在服务端
+  // （api.js 的 checkAdmin 会读取数据库里的 isAdmin 标志）。
+  // 即使有人手动把按钮的 hidden 去掉，请求也会被服务端以 403 拒绝。
+  // =====================================================================
+  let isAdmin = false;
+  let adminUsers = [];
+
+  function fmtDate(ms) {
+    if (!ms) return "未知";
+    const d = new Date(ms);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+      String(d.getDate()).padStart(2, "0");
+  }
+
+  function openAdmin() {
+    $("appView").classList.add("hidden");
+    $("adminView").classList.remove("hidden");
+    $("adminDetail").classList.add("hidden");
+    $("adminSearch").value = "";
+    loadAdminOverview();
+  }
+
+  function closeAdmin() {
+    $("adminView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+  }
+
+  async function loadAdminOverview() {
+    $("adminSub").textContent = "正在加载…";
+    const { status, data } = await api("/api/admin/overview");
+    if (status === 403) { $("adminSub").textContent = "没有管理员权限"; return; }
+    if (status !== 200) { $("adminSub").textContent = (data && data.error) || "加载失败"; return; }
+
+    adminUsers = data.users || [];
+    const s = data.stats || {};
+
+    $("adminSub").textContent = "共 " + (s.userCount || 0) + " 个账号";
+
+    $("adminStats").innerHTML = [
+      ["注册用户", s.userCount],
+      ["待办总数", s.todoCount],
+      ["完成记录", s.completionCount],
+      ["已绑邮箱", s.boundEmailCount],
+      ["管理员", s.adminCount],
+    ].map(function (p) {
+      return '<div class="admin-stat"><div class="n">' + (p[1] || 0) +
+        '</div><div class="l">' + p[0] + "</div></div>";
+    }).join("");
+
+    renderAdminList("");
+  }
+
+  function renderAdminList(keyword) {
+    const kw = (keyword || "").trim().toLowerCase();
+    const list = adminUsers.filter(function (u) {
+      if (!kw) return true;
+      return u.username.toLowerCase().indexOf(kw) >= 0 ||
+        (u.email || "").toLowerCase().indexOf(kw) >= 0;
+    });
+
+    if (list.length === 0) {
+      $("adminList").innerHTML = '<div class="empty">没有匹配的账号</div>';
+      return;
+    }
+
+    $("adminList").innerHTML = list.map(function (u) {
+      const initial = escapeHtml(u.username.slice(0, 1).toUpperCase());
+      return '<button class="admin-user" data-user="' + escapeHtml(u.username) + '" type="button">' +
+        '<span class="uavatar' + (u.isAdmin ? " adm" : "") + '">' + initial + "</span>" +
+        '<span class="uinfo">' +
+          '<span class="uname">' + escapeHtml(u.username) +
+            (u.isAdmin ? ' <span class="badge-admin">管理员</span>' : "") +
+          "</span>" +
+          '<span class="umeta">' + (u.email ? escapeHtml(u.email) : "未绑定邮箱") +
+            " · 注册于 " + fmtDate(u.createdAt) + "</span>" +
+        "</span>" +
+        '<span class="ucount">待办 <b>' + u.todoCount + "</b><br>完成 <b>" + u.completionCount + "</b></span>" +
+      "</button>";
+    }).join("");
+  }
+
+  async function openAdminUser(name) {
+    const box = $("adminDetail");
+    box.classList.remove("hidden");
+    box.innerHTML = '<div class="empty-mini">正在加载 ' + escapeHtml(name) + " 的数据…</div>";
+
+    const { status, data } = await api("/api/admin/users/" + encodeURIComponent(name));
+    if (status !== 200) {
+      box.innerHTML = '<div class="empty-mini">' + escapeHtml((data && data.error) || "加载失败") + "</div>";
+      return;
+    }
+
+    const todos = data.todos || [];
+    const comps = (data.completions || []).slice().reverse();
+
+    function todoLine(t) {
+      const remain = t.deadline - Date.now();
+      const color = remain <= 86400000 ? "var(--red)" : (remain <= 4 * 86400000 ? "var(--yellow)" : "var(--green)");
+      const txt = remain < 0 ? "已超时" : "剩余 " + (remain / 3600000).toFixed(1) + " 小时";
+      return "<li>" + escapeHtml(t.text || "（无标题）") +
+        '　<span style="color:var(--muted)">截止 ' + fmtDate(t.deadline) + "</span>" +
+        '　<span style="color:' + color + '">' + txt + "</span>" +
+        (t.notified ? '　<span style="color:var(--muted)">已提醒</span>' : "") + "</li>";
+    }
+
+    box.innerHTML =
+      "<h3>" + escapeHtml(data.username) +
+        (data.isAdmin ? ' <span class="badge-admin">管理员</span>' : "") + "</h3>" +
+      '<div class="dsub">邮箱：' + (data.email ? escapeHtml(data.email) : "未绑定") +
+        "　·　注册于 " + fmtDate(data.createdAt) + "</div>" +
+      "<h4>待办事项（" + todos.length + "）</h4>" +
+      (todos.length
+        ? "<ul>" + todos.map(todoLine).join("") + "</ul>"
+        : '<div class="empty-mini">暂无待办</div>') +
+      "<h4>完成记录（" + comps.length + "，最近 20 条）</h4>" +
+      (comps.length
+        ? "<ul>" + comps.slice(0, 20).map(function (c) {
+            const d = new Date(c.at);
+            const ts = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+              String(d.getDate()).padStart(2, "0") + " " +
+              String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+            return "<li>" + escapeHtml(c.text || "（无标题）") +
+              '　<span style="color:var(--muted)">' + ts + "</span>" +
+              (c.onTime === false ? '　<span style="color:var(--red)">超时完成</span>' : "") + "</li>";
+          }).join("") + "</ul>"
+        : '<div class="empty-mini">暂无完成记录</div>');
+
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  // ---------------------------------------------------------------- 事件
+  $("tabLogin").addEventListener("click", () => {
+    authMode = "login";
+    $("tabLogin").classList.add("active");
+    $("tabRegister").classList.remove("active");
+    $("authSubmit").textContent = "登录";
+    $("password").setAttribute("autocomplete", "current-password");
+    setAuthMsg("");
+  });
+
+  $("tabRegister").addEventListener("click", () => {
+    authMode = "register";
+    $("tabRegister").classList.add("active");
+    $("tabLogin").classList.remove("active");
+    $("authSubmit").textContent = "注册并登录";
+    $("password").setAttribute("autocomplete", "new-password");
+    setAuthMsg("");
+  });
+
+  $("authForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("authSubmit");
+    const u = $("username").value.trim();
+    const p = $("password").value;
+
+    if (!u || !p) { setAuthMsg("请填写用户名和密码", "error"); return; }
+
+    btn.disabled = true;
+    btn.textContent = "处理中…";
+    setAuthMsg("");
+
+    const { status, data } = await api("/api/" + authMode, {
+      method: "POST",
+      body: JSON.stringify({ username: u, password: p }),
+    });
+
+    btn.disabled = false;
+    btn.textContent = authMode === "login" ? "登录" : "注册并登录";
+
+    if (status === 200 || status === 201) {
+      token = data.token;
+      username = data.username;
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, username);
+      $("password").value = "";
+      setAuthMsg("");
+      showApp();
+      await loadTodos();
+      return;
+    }
+    setAuthMsg((data && data.error) || "操作失败，请重试", "error");
+  });
+
+  $("logoutBtn").addEventListener("click", async () => {
+    try { await api("/api/logout", { method: "POST" }); } catch (e) {}
+    doLocalLogout();
+    setAuthMsg("已退出登录", "ok");
+  });
+
+  // ---------------- 提醒邮箱交互 ----------------
+  $("emailToggle").addEventListener("click", () => {
+    const wrap = $("emailFormWrap");
+    const opening = wrap.classList.contains("hidden");
+    wrap.classList.toggle("hidden", !opening);
+    if (opening) {
+      setEmailMsg("");
+      $("emailInput").value = boundEmail || "";
+      $("emailInput").focus();
+    }
+  });
+
+  $("emailCancel").addEventListener("click", () => {
+    $("emailFormWrap").classList.add("hidden");
+    setEmailMsg("");
+  });
+
+  $("emailSave").addEventListener("click", async () => {
+    const val = $("emailInput").value.trim();
+    if (!val) { setEmailMsg("请填写邮箱，或直接点「取消」", "error"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { setEmailMsg("邮箱格式不正确", "error"); return; }
+
+    $("emailSave").disabled = true;
+    const ok = await saveEmail(val);
+    $("emailSave").disabled = false;
+
+    if (ok) {
+      setEmailMsg("已保存，剩余不足 1 天时会发邮件到这个邮箱", "ok");
+      setTimeout(() => $("emailFormWrap").classList.add("hidden"), 1600);
+    }
+  });
+
+  $("addForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const textEl = $("text");
+    const dlEl = $("deadline");
+    const text = textEl.value.trim();
+    const deadline = dlEl.value ? new Date(dlEl.value).getTime() : NaN;
+
+    if (!text) { textEl.focus(); return; }
+    if (isNaN(deadline)) { alert("请选择截止时间"); dlEl.focus(); return; }
+
+    $("addBtn").disabled = true;
+    const ok = await addTodo(text, deadline);
+    $("addBtn").disabled = false;
+
+    if (ok) { textEl.value = ""; dlEl.value = ""; textEl.focus(); }
+  });
+
+  $("sort").addEventListener("change", render);
+
+  $("list").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const item = btn.closest(".item");
+    const id = item ? item.dataset.id : null;
+    if (!id) return;
+
+    if (action === "done") completeTodo(id);
+    else if (action === "edit") startEdit(id);
+    else if (action === "cancel") cancelEdit();
+    else if (action === "save") saveEdit(id);
+  });
+
+  // 编辑时实时记录草稿，这样 20 秒一次的轮询重绘不会丢失用户输入
+  $("list").addEventListener("input", (e) => {
+    if (!editingId) return;
+    if (e.target.id === "editText") editDraft.text = e.target.value;
+    else if (e.target.id === "editDeadline") editDraft.deadline = e.target.value;
+  });
+
+  // 编辑框里按 Enter 保存、按 Esc 取消
+  $("list").addEventListener("keydown", (e) => {
+    if (!editingId) return;
+    const item = e.target.closest(".item");
+    if (!item) return;
+    if (e.key === "Enter") { e.preventDefault(); saveEdit(item.dataset.id); }
+    else if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+  });
+
+  // 点击热力图方格 → 显示当天完成详情
+  $("hmGrid").addEventListener("click", (e) => {
+    const cell = e.target.closest(".hm-cell");
+    if (!cell || !cell.dataset.date) return;
+    showDayDetail(cell.dataset.date);
+  });
+
+  // ---------------- 管理后台交互 ----------------
+  $("adminBtn").addEventListener("click", openAdmin);
+  $("adminBack").addEventListener("click", closeAdmin);
+
+  $("adminSearch").addEventListener("input", (e) => {
+    renderAdminList(e.target.value);
+  });
+
+  $("adminList").addEventListener("click", (e) => {
+    const btn = e.target.closest(".admin-user");
+    if (!btn || !btn.dataset.user) return;
+    openAdminUser(btn.dataset.user);
+  });
+
+  // 每分钟刷新剩余时间显示
+  setInterval(() => { if (token) render(); }, 60000);
+
+  // ---------------------------------------------------------------- PWA
+  // 1) 注册 Service Worker（提供离线打开能力）
+  if (false && "serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch((e) => {
+        console.warn("Service Worker 注册失败:", e);
+      });
+    });
+  }
+
+  // 2) 安装到主屏幕
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+  let deferredPrompt = null;
+
+  function showInstallBtn() {
+    if (window.__NATIVE_APP__) return; // 已经是原生 App，不需要"安装到桌面"
+    if (isStandalone) return; // 已经装过了
+    $("installBtn").classList.remove("hidden");
+  }
+
+  // Chromium 系（安卓 Chrome / 桌面 Chrome / Edge）：捕获系统安装弹窗
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstallBtn();
+  });
+
+  // 已经安装完成
+  window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    $("installBtn").classList.add("hidden");
+  });
+
+  // iOS Safari 不支持 beforeinstallprompt，直接给出图文指引按钮
+  if (isIOS && !isStandalone) showInstallBtn();
+
+  $("installBtn").addEventListener("click", async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice && choice.outcome === "accepted") $("installBtn").classList.add("hidden");
+      deferredPrompt = null;
+      return;
+    }
+    // iOS 或无法自动唤起时，给出操作指引
+    alert(
+      "把这个应用装到桌面：\n\n" +
+        (isIOS
+          ? "① 点 Safari 底部中间的「分享」按钮 ⬆️\n② 在菜单里选择「添加到主屏幕」\n③ 点右上角「添加」"
+          : "① 点浏览器右上角的菜单（⋮）\n② 选择「安装应用」或「添加到主屏幕」") +
+        "\n\n装好后桌面会出现「待办」图标，点开就是全屏应用，还能离线查看。"
+    );
+  });
+
+  // ---------------------------------------------------------------- 启动
+  (async function init() {
+    if (!navigator.onLine) setOffline(true);
+
+    if (!token) { showAuth(); return; }
+    const { status } = await api("/api/me");
+    if (status === 200) {
+      showApp();
+      await loadTodos();
+    } else if (status === 401) {
+      doLocalLogout();
+    } else {
+      // 网络异常：用缓存的登录态先把界面显示出来
+      showApp();
+      await loadTodos();
+    }
+  })();
+</script>
+</body>
+</html>
