@@ -54,6 +54,48 @@
 
 ---
 
+## [1.7.1] — 2026-10-18
+
+本次为**仓库整理与安全修复**，不改动任何线上功能。
+
+### 安全修复（重要）
+
+- **移除脚本中硬编码的 Netlify 访问令牌**
+  - 位置：`todo-netlify/dump-data.sh`
+  - 风险：该脚本若被提交到公开仓库，**令牌会直接暴露**，任何人都能借此
+    读取/修改站点数据与环境变量
+  - 修复：改为从环境变量 `NETLIFY_AUTH_TOKEN` / `NETLIFY_SITE_ID` 读取，
+    缺失时给出明确提示；脚本内不再留任何凭据
+  - 教训：**提交前必须做凭据扫描**。本次推送前逐项核对了 7 个真实凭据
+    （管理员密码/密钥、通知密钥、Netlify token、GitHub token、
+    Cloudflare token、QQ 授权码），确认均未出现在提交内容中
+
+### 变更
+
+- **项目文件整理并同步到 GitHub 仓库**
+  - 仓库地址：https://github.com/Yuwann-Jiang/Yuwannstore
+  - `.gitignore` 改为**白名单策略**：本机工作区还有其它无关项目与大量缓存，
+    因此先忽略一切、再逐项放行本项目的 72 个文件
+  - 脚本与文档中的**个人绝对路径**（`/Users/zhuyanshen/...`）全部改为
+    基于脚本自身位置的相对路径，脚本在他人机器上也能直接用
+  - 删除重复的 `todo.html`（与根目录 `index.html` 内容完全相同）
+  - 补齐 `LICENSE`（Apache License 2.0）
+  - 重写 `README.md` 为项目总览，目录结构与实际仓库一一对应
+  - **保留原 GitHub Pages 入口**：根目录 `index.html` 维持 v0.1.0 静态版原样，
+    https://yuwann-jiang.github.io/Yuwannstore/ 继续可用（已实测 200）
+
+### 保留原有内容
+
+- **用户在 GitHub 上直接编辑的 README 内容完整保留**，
+  存于 `docs/legacy-static-version.md`（58 行），未做任何删改
+- git 历史采用**合并**而非覆盖：原有 4 个提交全部保留，未做 force push
+
+### 文档
+- 新增 `docs/legacy-static-version.md`（旧版静态应用功能说明）
+- `README.md` 补充仓库结构说明、`.gitignore` 白名单机制、旧版入口说明
+
+---
+
 ## [1.7.0] — 2026-09-30
 
 ### 新增
