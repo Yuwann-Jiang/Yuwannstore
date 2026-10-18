@@ -582,14 +582,29 @@ grep -n 'store.get\|\.get(key' todo-netlify/netlify/functions/api.js   # 都应�
 
 | 凭据 | 存放位置 | 备注 |
 |---|---|---|
-| Netlify 个人访问令牌 | 使用者本地 | 用于部署与数据管理，**用完建议删除** |
+| **GitHub 访问令牌** | 本地 `.github-token`（权限 600，已被 `.gitignore` 忽略） | 用于 `git push`。**不要提交到仓库** |
+| Netlify 个人访问令牌 | 使用者的环境变量或密码管理器 | 用于部署与数据管理 |
 | QQ 邮箱授权码 | Netlify 环境变量 | 仅用于发信，可随时在 QQ 邮箱作废 |
+| `ADMIN_SECRET` | Netlify 环境变量 + 本地 `.admin-secret` | 保护管理员初始化接口 |
 | `NOTIFY_SECRET` | Netlify 环境变量 + 本地 `.notify-secret` | 保护手动触发接口 |
 | DCloud 账号 | HBuilderX 本地 | 云打包必需 |
 
+> 本机把 GitHub 令牌保存在 `.github-token`，推送时这样用（不会写进 git 配置）：
+>
+> ```bash
+> cd /Users/zhuyanshen/Documents/DSH
+> AUTH=$(printf 'x-access-token:%s' "$(cat .github-token)" | base64)
+> git -c http.extraHeader="Authorization: Basic $AUTH" push origin main
+> ```
+
 ### 安全建议
 
-1. **Netlify 令牌用完即删**
+1. **GitHub 令牌按最小权限原则申请**
+   本仓库只需要 **`repo`** 一项权限。若生成时勾选了 `admin:org`、
+   `delete_repo`、`workflow` 等，建议换成更窄的令牌——权限越大，泄露后果越严重。
+   管理入口：https://github.com/settings/tokens
+
+2. **Netlify 令牌用完即删**
    删除入口：https://app.netlify.com/user/applications#personal-access-tokens
 
 2. **令牌不要写进代码或提交到仓库**

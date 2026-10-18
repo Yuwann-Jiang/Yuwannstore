@@ -29,6 +29,9 @@
 
 # ---------- 第三步：从已放行的目录中再排除敏感 / 垃圾内容 ----------
 
+# GitHub 访问令牌（本机保存，供部署/推送使用）
+/.github-token
+
 # 敏感凭据 —— 绝对不要提交
 /todo-netlify/.notify-secret
 /todo-netlify/.admin-secret
