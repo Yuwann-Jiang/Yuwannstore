@@ -179,6 +179,13 @@
    教训：**凡是靠"临时环境变量"的凭据，一定会丢**，必须落到文件并由脚本读取。
 
 ### 运维事项
+- **清理了 39 个历史测试账号**（`deno*` / `denob*` / `feat*` / `hm*` 等
+  「前缀 + 10 位时间戳」形式，全部由历次接口测试脚本自动注册）。
+  新增工具 `todo-netlify/cleanup-test-users.mjs`：默认只预览，
+  加 `--apply` 才真正删除；只匹配自动生成的名字，真实账号（含中文名）一律保留。
+  > 踩坑：一开始用 `netlify blobs:delete` 逐个删，每个 key 都要启一次 CLI 进程，
+  > 删到一半就超过 10 分钟被掐断（留下删一半的状态）。改用 `@netlify/blobs`
+  > SDK 传 `siteID` + `token` 后，剩下的 20 个账号 23 秒删完。
 - 本次仍**未正式发布**：2026-10-18 11:20 实测 `--prod` 仍返回
   `403 Account credit usage exceeded - new deploys are blocked until credits are added`
   （详见 1.7.0 的积分说明；积分周期 `next_usage_period_start` = 2026-10-20 15:00 北京时间）。

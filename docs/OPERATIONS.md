@@ -404,6 +404,22 @@ export NETLIFY_SITE_ID='<站点 ID>'
 
 > ⚠️ `blobs:*` 命令不支持 `--site` 参数，必须通过 `NETLIFY_SITE_ID` 环境变量指定站点。
 
+### 清理测试账号
+
+接口测试脚本（`test-features.sh` / `todo-deno/test.sh`）每跑一次就会注册一个
+`feat<时间戳>` 或 `deno<时间戳>` 的临时账号，久了会让管理员后台的用户列表变脏。
+
+```bash
+cd todo-netlify
+node cleanup-test-users.mjs            # 只预览会被删的账号
+node cleanup-test-users.mjs --apply    # 真正删除
+```
+
+- 只匹配「前缀 + 10 位时间戳」这种自动生成的名字，**真实账号（含中文名）一律保留**
+- 用的是 `@netlify/blobs` SDK（`siteID` + `token`），不要改回 `netlify blobs:delete`
+  CLI：每个 key 启一次进程，删上百个 key 会超时并留下删一半的状态
+- 会话 key（`session:*`）无法从用户名反查，靠 30 天自动过期清理
+
 ### 数据备份
 
 目前**没有自动备份**，数据只在 Netlify Blobs 单点。建议定期手工导出：
