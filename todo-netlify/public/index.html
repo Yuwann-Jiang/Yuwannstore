@@ -1723,8 +1723,62 @@
     btn.disabled = true;
     btn.textContent = "生成中…";
 
+    const tz = -new Date().getTimezoneOffset();
+    const p = (n) => String(n).padStart(2, "0");
+    const now = new Date();
+    const filename = "待办-" + now.getFullYear() + p(now.getMonth() + 1) + p(now.getDate()) + ".ics";
+
+    // ---------------------------------------------------------------
+    // 原生 App（HBuilderX 5+App）：WebView 里 <a download> 不会触发任何下载，
+    // 点下去等于什么都不发生。所以改用 plus.downloader（带 Authorization 头）
+    // 把文件存到手机的「下载」目录，再交给系统里的日历 App 打开。
+    // 注意：plus.* 只在原生环境存在，网页版永远走不到这里。
+    // ---------------------------------------------------------------
+    if (window.__NATIVE_APP__ && window.plus && window.plus.downloader) {
+      try {
+        const task = window.plus.downloader.createDownload(
+          API_BASE + "/api/calendar.ics?tz=" + tz,
+          {
+            filename: "_downloads/" + filename,
+            headers: { Authorization: "Bearer " + token },
+            timeout: 30,
+          },
+          function (t, status) {
+            btn.disabled = false;
+            btn.textContent = old;
+            if (status === 200 && t && t.filename) {
+              showToast(
+                "已保存 " + filename + "，点「打开」用日历 App 导入。",
+                {
+                  actionLabel: "打开",
+                  ms: 15000,
+                  onAction: function () {
+                    window.plus.runtime.openFile(
+                      t.filename,
+                      {},
+                      function () {
+                        showToast("没有能打开 .ics 的应用，可先安装一个日历 App 再试。", { ms: 7000 });
+                      }
+                    );
+                  },
+                }
+              );
+            } else {
+              showToast("导出失败（状态码 " + status + "），请检查网络后重试。", { ms: 8000 });
+            }
+          }
+        );
+        task.start();
+      } catch (e) {
+        // plus 接口异常时退回下面的普通下载逻辑
+        btn.disabled = false;
+        btn.textContent = old;
+        showToast("导出失败：" + ((e && e.message) || "原生下载不可用"), { ms: 8000 });
+      }
+      return;
+    }
+
     try {
-      const tz = -new Date().getTimezoneOffset();
       const res = await fetch(API_BASE + "/api/calendar.ics?tz=" + tz, {
         headers: { Authorization: "Bearer " + token },
       });
@@ -1741,12 +1795,10 @@
       const ics = await res.text();
       const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
       const url = URL.createObjectURL(blob);
-      const p = (n) => String(n).padStart(2, "0");
-      const now = new Date();
 
       const a = document.createElement("a");
       a.href = url;
-      a.download = "待办-" + now.getFullYear() + p(now.getMonth() + 1) + p(now.getDate()) + ".ics";
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();

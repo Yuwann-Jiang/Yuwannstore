@@ -178,6 +178,29 @@
    `.gitignore`），`netlify.sh` 在环境变量缺失时自动读取。
    教训：**凡是靠"临时环境变量"的凭据，一定会丢**，必须落到文件并由脚本读取。
 
+### 安卓 App 重新打包（1.8.0 / code 180）
+
+- `todo-app-native/index.html` 从最新网页源码重新生成（统计页、导出日历、撤销提示条）
+- `manifest.json` 版本 `1.1.0/110` → **`1.8.0/180`**（对齐产品版本，versionCode 递增才能覆盖升级）
+- **修掉一个只在 App 里才会犯的错**：WebView 套壳里 `<a download>` 不会触发任何下载，
+  「导出日历」在 App 里等于没反应。已加原生分支：`window.__NATIVE_APP__` 为真时改用
+  `plus.downloader`（带 `Authorization` 头）下载到手机「下载」目录，并给一个「打开」
+  按钮交给系统日历 App 导入。网页版行为不变。
+
+### 打包相关的两个新发现（供后来者）
+
+1. **HBuilderX 的 cli 其实能云打包，但必须已登录**
+   `cli pack --project <路径> --platform android --android.packagename <包名> --android.androidpacktype <1|3>`
+   —— 未登录时只回一行 `user not login`，很容易误以为是命令用错了。
+2. **DCloud 打的 APK 里，版本号不在 AndroidManifest**
+   `android:versionName/versionCode` 在包里根本不存在；真正生效的是
+   `assets/apps/<AppID>/www/manifest.json` 的 `version`。
+   另外两个旧包的实际包名是 `plus.H5E0B88F1`，
+   **不是** `manifest.json` 里写的 `com.yuwann.todo`（对话框当时用了默认值）。
+   换包名或换证书都会导致新包装不到旧版上，必须先卸载。
+3. 新增 `todo-app-native/verify-apk.sh`：读包内版本号 + 功能关键词 + 与旧包的
+   签名 SHA-256 比对，一次看清「版本对不对、页面新不新、能不能覆盖升级」。
+
 ### 运维事项
 - **清理了 39 个历史测试账号**（`deno*` / `denob*` / `feat*` / `hm*` 等
   「前缀 + 10 位时间戳」形式，全部由历次接口测试脚本自动注册）。
