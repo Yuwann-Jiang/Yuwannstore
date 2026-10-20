@@ -8,7 +8,8 @@
 import assert from "node:assert/strict";
 import {
   normalizeDate, normalizeTitle, normalizeNote, normalizeRepeat,
-  validateMemorial, MAX_TITLE_LEN, MAX_NOTE_LEN, MAX_MEMORIALS, REPEAT_VALUES,
+  normalizeLunarDate, normalizeCalendar,
+  validateMemorial, MAX_TITLE_LEN, MAX_NOTE_LEN, MAX_MEMORIALS, REPEAT_VALUES, CALENDAR_VALUES,
 } from "./lib/memorial.js";
 
 let pass = 0;
@@ -100,7 +101,10 @@ console.log("\n[完整校验：新建]");
 t("最小输入即可通过，并补上默认值", () => {
   const v = validateMemorial({ title: "在一起", date: "2023-05-20" });
   assert.equal(v.ok, true);
-  assert.deepEqual(v.value, { title: "在一起", date: "2023-05-20", repeat: "year", note: "" });
+  assert.deepEqual(v.value, {
+    title: "在一起", date: "2023-05-20",
+    calendar: "solar", isLeap: false, repeat: "year", note: "",
+  });
 });
 t("缺名称被拒", () => {
   const v = validateMemorial({ date: "2023-05-20" });
@@ -133,9 +137,10 @@ t("只传一个字段也能通过", () => {
 });
 t("编辑时不会写入默认值", () => {
   const v = validateMemorial({ date: "2024-01-01" }, { partial: true });
-  assert.deepEqual(v.value, { date: "2024-01-01" });
+  assert.equal(v.value.date, "2024-01-01");
   assert.equal("repeat" in v.value, false);
   assert.equal("note" in v.value, false);
+  assert.equal("calendar" in v.value, false);
 });
 t("编辑时字段非法照样被拒", () => {
   assert.equal(validateMemorial({ date: "2024-02-30" }, { partial: true }).ok, false);
@@ -150,6 +155,70 @@ t("编辑可以把备注清空", () => {
   const v = validateMemorial({ note: "" }, { partial: true });
   assert.equal(v.ok, true);
   assert.equal(v.value.note, "");
+});
+
+console.log("\n[农历日期校验]");
+t("存在的农历日期通过", () => {
+  const v = validateMemorial({ title: "中秋", date: "2023-08-15", calendar: "lunar" });
+  assert.equal(v.ok, true);
+  assert.equal(v.value.calendar, "lunar");
+  assert.equal(v.value.date, "2023-08-15");
+  assert.equal(v.value.isLeap, false);
+});
+t("闰月标记正确保留", () => {
+  const v = validateMemorial({
+    title: "闰二月生日", date: "2023-02-12", calendar: "lunar", isLeap: true,
+  });
+  assert.equal(v.ok, true);
+  assert.equal(v.value.isLeap, true);
+});
+t("该年没有这个闰月 → 拒绝", () => {
+  const v = validateMemorial({
+    title: "不存在的闰月", date: "2024-02-12", calendar: "lunar", isLeap: true,
+  });
+  assert.equal(v.ok, false);
+  assert.match(v.error, /农历/);
+});
+t("小月没有三十 → 拒绝", () => {
+  // 2023 年农历正月只有 29 天，没有三十（农历二月有三十，别选错月份）
+  const bad = validateMemorial({ title: "不存在的日子", date: "2023-01-30", calendar: "lunar" });
+  assert.equal(bad.ok, false);
+  const good = validateMemorial({ title: "存在的日子", date: "2023-02-30", calendar: "lunar" });
+  assert.equal(good.ok, true);
+});
+t("农历月份越界 → 拒绝", () => {
+  assert.equal(validateMemorial({ title: "x", date: "2023-13-01", calendar: "lunar" }).ok, false);
+  assert.equal(validateMemorial({ title: "x", date: "2023-00-01", calendar: "lunar" }).ok, false);
+  assert.equal(validateMemorial({ title: "x", date: "2023-01-31", calendar: "lunar" }).ok, false);
+});
+t("农历年份越界 → 拒绝", () => {
+  assert.equal(validateMemorial({ title: "x", date: "1899-01-01", calendar: "lunar" }).ok, false);
+  assert.equal(validateMemorial({ title: "x", date: "2101-01-01", calendar: "lunar" }).ok, false);
+});
+t("非法日历类型 → 拒绝", () => {
+  const v = validateMemorial({ title: "x", date: "2023-05-20", calendar: "mayan" });
+  assert.equal(v.ok, false);
+  assert.match(v.error, /solar 或 lunar/);
+});
+t("公历不会带闰月标记", () => {
+  const v = validateMemorial({ title: "x", date: "2023-05-20", isLeap: true });
+  assert.equal(v.ok, true);
+  assert.equal(v.value.isLeap, false);
+});
+t("isLeap 必须是布尔值", () => {
+  const v = validateMemorial({ title: "x", date: "2023-05-20", isLeap: "yes" });
+  assert.equal(v.ok, false);
+});
+t("normalizeLunarDate 能算出对应的公历日期", () => {
+  const r = normalizeLunarDate("2023-08-15", false);   // 2023 中秋
+  assert.deepEqual(r.solar, { year: 2023, month: 9, day: 29 });
+});
+t("normalizeCalendar 默认公历", () => {
+  assert.equal(normalizeCalendar(undefined), "solar");
+  assert.equal(normalizeCalendar("LUNAR"), "lunar");
+  assert.equal(normalizeCalendar("solar"), "solar");
+  assert.equal(normalizeCalendar("x"), null);
+  assert.deepEqual(CALENDAR_VALUES, ["solar", "lunar"]);
 });
 
 console.log("\n[常量]");

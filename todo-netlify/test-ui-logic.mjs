@@ -134,7 +134,8 @@ const source =
   "\n;globalThis.__t = { renderStats, renderCols, showToast, hideToast, showUndo," +
   " fmtPct, fmtDuration, classify, levelOf, calcStreak, dateKey, fmtRemain, shorten, escapeHtml," +
   " memorialInfo, sortMemorials, renderMemorials, renderMemBanner, emojiOf, parseDateKey," +
-  " daysBetween, fmtDateKey," +
+  " daysBetween, fmtDateKey, readMemDate, setMemCalendar, buildLunarSelectors," +
+  " LUNAR_MONTH_NAMES, LUNAR_DAY_NAMES," +
   " setMemorials: function (l) { memorials = l; }, getMemorials: function () { return memorials; } };\n";
 
 vm.createContext(sandbox);
@@ -461,6 +462,77 @@ t("没有纪念日 → 隐藏提示条", () => {
   T.setMemorials([]);
   T.renderMemBanner();
   assert.equal(document.getElementById("memBanner").classList.contains("hidden"), true);
+});
+
+console.log("\n[纪念：农历]");
+t("农历月名与日名齐全", () => {
+  assert.equal(T.LUNAR_MONTH_NAMES.length, 12);
+  assert.equal(T.LUNAR_MONTH_NAMES[0], "正月");
+  assert.equal(T.LUNAR_MONTH_NAMES[10], "冬月");
+  assert.equal(T.LUNAR_DAY_NAMES.length, 30);
+  assert.equal(T.LUNAR_DAY_NAMES[0], "初一");
+  assert.equal(T.LUNAR_DAY_NAMES[29], "三十");
+});
+t("农历纪念日按服务端给的公历日期算倒计时", () => {
+  const info = T.memorialInfo({
+    calendar: "lunar",
+    date: "1998-08-15",
+    repeat: "year",
+    lunarText: "八月十五",
+    originalSolar: "1998-10-05",
+    occurrences: [
+      { lunarYear: 2026, solar: keyOf(12) },
+      { lunarYear: 2027, solar: keyOf(380) },
+    ],
+  });
+  assert.equal(info.kind, "future");
+  assert.equal(info.days, 12);
+  assert.equal(info.years, 28);           // 2026 - 1998
+  assert.equal(info.lunarText, "八月十五");
+  assert.ok(info.totalDays > 0);
+});
+t("农历今天就是纪念日", () => {
+  const info = T.memorialInfo({
+    calendar: "lunar", date: "2000-01-01", repeat: "year",
+    lunarText: "正月初一", originalSolar: "2000-02-05",
+    occurrences: [{ lunarYear: 2026, solar: keyOf(0) }, { lunarYear: 2027, solar: keyOf(354) }],
+  });
+  assert.equal(info.kind, "today");
+  assert.equal(info.days, 0);
+});
+t("跳过已经过去的换算结果，取下一次", () => {
+  const info = T.memorialInfo({
+    calendar: "lunar", date: "2000-01-01", repeat: "year",
+    lunarText: "正月初一", originalSolar: "2000-02-05",
+    occurrences: [
+      { lunarYear: 2025, solar: keyOf(-100) },  // 已过去
+      { lunarYear: 2026, solar: keyOf(30) },
+    ],
+  });
+  assert.equal(info.days, 30);
+});
+t("农历一次性纪念日（已过）算成 past", () => {
+  const info = T.memorialInfo({
+    calendar: "lunar", date: "2000-01-01", repeat: "none",
+    lunarText: "正月初一", originalSolar: keyOf(-40),
+  });
+  assert.equal(info.kind, "past");
+  assert.equal(info.days, -40);
+});
+t("农历数据缺失时返回 null 而不是崩掉", () => {
+  assert.equal(T.memorialInfo({ calendar: "lunar", date: "2000-01-01", repeat: "year" }), null);
+});
+t("列表里显示农历文本与对应公历", () => {
+  T.setMemorials([{
+    id: "L", title: "外婆生日", calendar: "lunar", date: "1940-08-15", repeat: "year",
+    lunarText: "八月十五", originalSolar: "1940-09-16",
+    occurrences: [{ lunarYear: 2026, solar: keyOf(20) }, { lunarYear: 2027, solar: keyOf(390) }],
+  }]);
+  T.renderMemorials();
+  const html = document.getElementById("memList").innerHTML;
+  assert.ok(html.includes("农历八月十五"), "缺少农历文本");
+  assert.ok(html.includes("公历 " + keyOf(20)), "缺少换算后的公历日期");
+  assert.ok(html.includes("第 86 周年"), "缺少周年数");
 });
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);

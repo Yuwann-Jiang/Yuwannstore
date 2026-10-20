@@ -7,8 +7,9 @@ import { getStore } from "@netlify/blobs";
 import { webcrypto as crypto } from "node:crypto";
 import { createMailer, runNotify } from "../../lib/notify.js";
 import { computeStats } from "../../lib/stats.js";
-import { buildCalendar } from "../../lib/ics.js";
+import { buildCalendar, buildMemorialCalendar } from "../../lib/ics.js";
 import { validateMemorial, MAX_MEMORIALS } from "../../lib/memorial.js";
+import { lunar2solar, lunarInYear, solar2lunar, formatLunar, ganzhiOf, zodiacOf } from "../../lib/lunar.js";
 
 const PBKDF2_ITERATIONS = 100000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 会话有效期：30 天
@@ -146,6 +147,58 @@ async function getMemorials(username) {
   const r = await storeGet(memorialsKey(username));
   if (!r.ok) return { ok: false };
   return { ok: true, list: Array.isArray(r.value) ? r.value : [] };
+}
+
+// ---------------------------------------------------------------------------
+// 把农历纪念日换算成公历日期，供前端做倒计时
+//
+// 为什么不把农历表也塞进前端：前端是单文件应用，塞进去就等于把 201 个压缩值
+// 和一套换算逻辑复制一份，两份代码迟早会不一致。所以换算留在服务端（lib/lunar.js），
+// 前端只负责"拿到的公历日期跟今天差几天"。
+//
+// 返回的 occurrences 覆盖「今年前后各一年」共 3 次，前端挑第一个 ≥ 今天的即可：
+// 跨时区最多差一天，3 次足够，不会算错。
+// ---------------------------------------------------------------------------
+function enrichMemorial(m, now = Date.now()) {
+  if (!m || m.calendar !== "lunar") return m;
+
+  const parts = String(m.date || "").split("-").map(Number);
+  const [ly, lm, ld] = parts;
+  if (parts.length !== 3 || !ly || !lm || !ld) return m;
+
+  const isLeap = m.isLeap === true;
+  const base = lunar2solar(ly, lm, ld, isLeap);
+  if (!base) return m;
+
+  // 今天对应的农历年（用来决定哪几年要算）
+  const today = new Date(now);
+  const todayLunar = solar2LunarSafe(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate());
+
+  const out = Object.assign({}, m, {
+    lunarText: formatLunar({ month: lm, day: ld, isLeap }),
+    lunarYearText: ganzhiOf(ly) + zodiacOf(ly) + "年",
+    originalSolar: toDateKey(base.year, base.month, base.day),
+    occurrences: [],
+  });
+
+  const center = todayLunar ? todayLunar.year : Math.max(ly, new Date(now).getUTCFullYear());
+  for (let y = center - 1; y <= center + 2; y++) {
+    const s = lunarInYear(y, lm, ld, isLeap);
+    if (s) out.occurrences.push({ lunarYear: y, solar: toDateKey(s.year, s.month, s.day) });
+  }
+  return out;
+}
+
+function solar2LunarSafe(y, m, d) {
+  try {
+    return solar2lunar(y, m, d);
+  } catch {
+    return null;
+  }
+}
+
+function toDateKey(y, m, d) {
+  return y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
 }
 
 // 存储服务不可用时的统一响应
@@ -849,7 +902,9 @@ async function handle(req) {
   if (path === "/api/memorials" && req.method === "GET") {
     const r = await getMemorials(currentUser);
     if (!r.ok) return STORAGE_DOWN();
-    return json({ memorials: r.list });
+    // 农历纪念日在这里换算成公历（前端不做换算，见 enrichMemorial 的说明）
+    const now = Date.now();
+    return json({ memorials: r.list.map((m) => enrichMemorial(m, now)) });
   }
 
   if (path === "/api/memorials" && req.method === "POST") {
@@ -866,7 +921,9 @@ async function handle(req) {
     const item = {
       id: randomToken().slice(0, 12),
       title: v.value.title,
+      calendar: v.value.calendar,
       date: v.value.date,
+      isLeap: v.value.isLeap === true,
       repeat: v.value.repeat,
       note: v.value.note,
       created: Date.now(),
@@ -874,7 +931,27 @@ async function handle(req) {
     const list = r.list.concat([item]);
     const w = await storeSet(memorialsKey(currentUser), list);
     if (!w.ok) return STORAGE_DOWN();
-    return json({ memorial: item, memorials: list }, 201);
+    return json({ memorial: enrichMemorial(item), memorials: list.map((m) => enrichMemorial(m)) }, 201);
+  }
+
+  // 导出纪念日到日历（.ics）
+  // 参数：alarms=0 去掉提醒；years=展开多少年（农历需要逐次展开，默认 30）
+  if (path === "/api/memorials.ics" && req.method === "GET") {
+    const r = await getMemorials(currentUser);
+    if (!r.ok) return STORAGE_DOWN();
+
+    const ics = buildMemorialCalendar({
+      memorials: r.list,
+      now: Date.now(),
+      alarms: url.searchParams.get("alarms") !== "0",
+      years: Math.max(1, Math.min(100, Number(url.searchParams.get("years")) || 30)),
+      appUrl: process.env.APP_URL || "https://yuwann-todo.netlify.app/",
+      uidHost: "yuwann-todo",
+    });
+
+    return text(ics, "text/calendar; charset=utf-8", {
+      "Content-Disposition": "attachment; filename=\"memorials.ics\"; filename*=UTF-8''%E7%BA%AA%E5%BF%B5%E6%97%A5.ics",
+    });
   }
 
   const memMatch = path.match(/^\/api\/memorials\/([A-Za-z0-9]+)$/);
@@ -882,19 +959,40 @@ async function handle(req) {
   if (memMatch && req.method === "PATCH") {
     const id = memMatch[1];
     const body = await readJsonBody(req);
-    const v = validateMemorial(body, { partial: true });
-    if (!v.ok) return json({ error: v.error }, 400);
+    if (!body || typeof body !== "object") return json({ error: "请求格式有误" }, 400);
 
     const r = await getMemorials(currentUser);
     if (!r.ok) return STORAGE_DOWN();
     const target = r.list.find((x) => x.id === id);
     if (!target) return json({ error: "该纪念日不存在" }, 404);
 
+    const EDITABLE = ["title", "calendar", "date", "isLeap", "repeat", "note"];
+    if (!EDITABLE.some((k) => body[k] !== undefined)) {
+      return json({ error: "没有要修改的内容" }, 400);
+    }
+
+    // 先合再整体校验：calendar / date / isLeap 三者互相牵制
+    // （比如把公历日期直接改成农历会校验失败，必须先切 calendar 再给农历日期）
+    const merged = {
+      title: body.title !== undefined ? body.title : target.title,
+      calendar: body.calendar !== undefined ? body.calendar : target.calendar,
+      date: body.date !== undefined ? body.date : target.date,
+      isLeap: body.isLeap !== undefined ? body.isLeap : target.isLeap === true,
+      repeat: body.repeat !== undefined ? body.repeat : target.repeat,
+      note: body.note !== undefined ? body.note : target.note,
+    };
+    const v = validateMemorial(merged);
+    if (!v.ok) return json({ error: v.error }, 400);
+
     Object.assign(target, v.value);
     target.updatedAt = Date.now();
     const w = await storeSet(memorialsKey(currentUser), r.list);
     if (!w.ok) return STORAGE_DOWN();
-    return json({ memorial: target, memorials: r.list });
+    const now = Date.now();
+    return json({
+      memorial: enrichMemorial(target, now),
+      memorials: r.list.map((m) => enrichMemorial(m, now)),
+    });
   }
 
   if (memMatch && req.method === "DELETE") {

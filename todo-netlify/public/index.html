@@ -460,6 +460,7 @@
   }
   .mem-title { font-size: 20px; font-weight: 600; }
   .mem-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .mem-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
   .mem-form { margin-bottom: 16px; }
   .mem-opts {
@@ -507,6 +508,28 @@
   .mem-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
 
   .mem-empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 30px 0; }
+
+  /* 公历 / 农历切换与农历年月日选择 */
+  .cal-tabs { display: inline-flex; gap: 4px; background: #f1f3f8; padding: 3px; border-radius: 9px; margin-bottom: 8px; }
+  .cal-tabs button {
+    background: transparent; border: none; border-radius: 7px; padding: 6px 14px;
+    font-size: 13px; color: var(--muted); cursor: pointer;
+  }
+  .cal-tabs button.active { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 3px rgba(16,24,40,.1); }
+
+  .lunar-pick { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+  .lunar-pick select {
+    flex: 1 1 72px; min-width: 72px; padding: 10px 8px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: 9px; background: #fff;
+    color: var(--text); font-family: inherit; cursor: pointer;
+  }
+  .lunar-pick select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,.12); outline: none; }
+  .lunar-leap {
+    display: flex; align-items: center; gap: 5px; margin: 0 !important;
+    font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap;
+  }
+  .lunar-leap input { width: 15px; height: 15px; accent-color: var(--primary); }
+  .lunar-hint { font-size: 12px; color: var(--muted); margin-top: 7px; line-height: 1.5; }
 
   /* 主界面上的「今天/近期有纪念日」提示条 */
   .mem-banner {
@@ -744,7 +767,10 @@
         <div class="mem-title">🎗 纪念</div>
         <div class="mem-sub" id="memSub">把重要的日子记在这里，它会一直帮你数日子</div>
       </div>
-      <button class="btn-ghost" id="memBack" type="button">← 返回待办</button>
+      <div class="mem-head-actions">
+        <button class="btn-ghost" id="memExport" type="button">📅 导出纪念日</button>
+        <button class="btn-ghost" id="memBack" type="button">← 返回待办</button>
+      </div>
     </div>
 
     <form class="form mem-form" id="memForm">
@@ -754,8 +780,21 @@
           <input type="text" id="memTitle" maxlength="50" placeholder="例如：和小满第一次见面" autocomplete="off" />
         </div>
         <div class="field">
-          <label for="memDate">日期</label>
+          <label>日期</label>
+          <div class="cal-tabs" id="memCalTabs">
+            <button type="button" data-cal="solar" class="active">公历</button>
+            <button type="button" data-cal="lunar">农历</button>
+          </div>
           <input type="date" id="memDate" />
+          <div class="lunar-pick hidden" id="memLunarPick">
+            <select id="memLunarYear" aria-label="农历年"></select>
+            <select id="memLunarMonth" aria-label="农历月"></select>
+            <select id="memLunarDay" aria-label="农历日"></select>
+            <label class="lunar-leap hidden" id="memLunarLeapWrap">
+              <input type="checkbox" id="memLunarLeap" /> 闰月
+            </label>
+          </div>
+          <div class="lunar-hint" id="memLunarHint">农历生日、祭日按农历记；不确定年份就选今年，不影响倒计时。</div>
         </div>
       </div>
       <div class="mem-opts">
@@ -1961,6 +2000,72 @@
   let memorials = [];
   let memEditingId = null;
 
+  // ---------------- 农历输入辅助 ----------------
+  // 前端**不内置**农历换算表：那会和 lib/lunar.js 变成两份迟早走偏的数据。
+  // 这里只给出固定的月名/日名选项，日期是否真实存在由服务端校验；
+  // 「农历 → 公历」的换算结果也由服务端算好返回（见 api.js 的 enrichMemorial）。
+  const LUNAR_MONTH_NAMES = ["正月", "二月", "三月", "四月", "五月", "六月",
+    "七月", "八月", "九月", "十月", "冬月", "腊月"];
+  const LUNAR_DAY_NAMES = [
+    "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
+    "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+    "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十",
+  ];
+  let memCalendar = "solar";
+
+  function buildLunarSelectors() {
+    const yearSel = $("memLunarYear");
+    if (!yearSel || yearSel.options.length) return; // 只建一次
+
+    const nowYear = new Date().getFullYear();
+    let html = "";
+    for (let year = 1901; year <= 2100; year++) {
+      html += '<option value="' + year + '"' + (year === nowYear ? " selected" : "") + ">" +
+        year + " 年</option>";
+    }
+    yearSel.innerHTML = html;
+
+    $("memLunarMonth").innerHTML = LUNAR_MONTH_NAMES
+      .map(function (n, i) { return '<option value="' + (i + 1) + '">' + n + "</option>"; })
+      .join("");
+
+    $("memLunarDay").innerHTML = LUNAR_DAY_NAMES
+      .map(function (n, i) { return '<option value="' + (i + 1) + '">' + n + "</option>"; })
+      .join("");
+  }
+
+  function setMemCalendar(cal) {
+    memCalendar = cal === "lunar" ? "lunar" : "solar";
+    const tabs = $("memCalTabs");
+    if (tabs) {
+      [...tabs.children].forEach(function (b) {
+        b.classList.toggle("active", b.dataset.cal === memCalendar);
+      });
+    }
+    $("memDate").classList.toggle("hidden", memCalendar === "lunar");
+    $("memLunarPick").classList.toggle("hidden", memCalendar !== "lunar");
+    $("memLunarHint").classList.toggle("hidden", memCalendar !== "lunar");
+    if (memCalendar === "lunar") {
+      buildLunarSelectors();
+      $("memLunarLeapWrap").classList.remove("hidden");
+    }
+  }
+
+  // 从表单读出 { calendar, date, isLeap }
+  function readMemDate() {
+    if (memCalendar === "lunar") {
+      const y = $("memLunarYear").value;
+      const mo = String($("memLunarMonth").value).padStart(2, "0");
+      const d = String($("memLunarDay").value).padStart(2, "0");
+      return {
+        calendar: "lunar",
+        date: y + "-" + mo + "-" + d,
+        isLeap: $("memLunarLeap").checked === true,
+      };
+    }
+    return { calendar: "solar", date: $("memDate").value, isLeap: false };
+  }
+
   // "2023-05-20" → 本地时间当天 0 点
   function parseDateKey(k) {
     const parts = String(k || "").split("-");
@@ -1993,12 +2098,60 @@
    *   totalDays: 从最初的日期到今天一共多少天
    */
   function memorialInfo(m) {
+    const repeat = m.repeat === "none" ? "none" : "year";
+
+    // ---------------- 农历 ----------------
+    // 农历换算在服务端做（见 api.js 的 enrichMemorial），这里只拿结果算天数
+    if (m.calendar === "lunar") {
+      const base = parseDateKey(m.originalSolar || m.date);
+      const today8 = midnightToday();
+      const totalDaysL = base ? daysBetween(base, today8) : 0;
+      const occ = Array.isArray(m.occurrences) ? m.occurrences : [];
+      const todayKey = dateKey(new Date());
+      const startLunarYear = Number(String(m.date || "").slice(0, 4)) || 0;
+
+      // 一次性的农历纪念日不需要 occurrences，直接用换算好的公历日期
+      if (repeat === "none") {
+        const at = parseDateKey(m.originalSolar);
+        if (!at) return null;
+        const d = daysBetween(today8, at);
+        return {
+          days: d,
+          kind: d === 0 ? "today" : d > 0 ? "future" : "past",
+          years: null,
+          totalDays: totalDaysL,
+          lunarText: m.lunarText || "",
+          nextKey: m.originalSolar,
+        };
+      }
+
+      if (!occ.length) return null;
+
+      let next = null;
+      for (const o of occ) {
+        if (o && o.solar >= todayKey) { next = o; break; }
+      }
+      if (!next) next = occ[occ.length - 1];
+
+      const at = parseDateKey(next.solar);
+      if (!at) return null;
+      const days = daysBetween(today8, at);
+      return {
+        days,
+        kind: days === 0 ? "today" : "future",
+        years: startLunarYear ? next.lunarYear - startLunarYear : null,
+        totalDays: totalDaysL,
+        lunarText: m.lunarText || "",
+        nextKey: next.solar,
+      };
+    }
+
+    // ---------------- 公历 ----------------
     const base = parseDateKey(m.date);
     if (!base) return null;
 
     const today = midnightToday();
     const totalDays = daysBetween(base, today);
-    const repeat = m.repeat === "none" ? "none" : "year";
 
     if (repeat === "year") {
       // 今年这一天；已经过了就顺延到明年
@@ -2107,7 +2260,14 @@
         else if (info.kind === "past") cls = "past";
         else if (info.days <= 7) cls = "soon";
 
-        const meta = [fmtDateKey(m.date), m.repeat === "year" ? "每年重复" : "只此一次"];
+        const meta = [];
+        if (m.calendar === "lunar") {
+          meta.push("农历" + (info.lunarText || ""));
+          if (info.nextKey) meta.push("公历 " + info.nextKey);
+        } else {
+          meta.push(fmtDateKey(m.date));
+        }
+        meta.push(m.repeat === "year" ? "每年重复" : "只此一次");
         if (info.years !== null && info.years > 0) meta.push("第 " + info.years + " 周年");
         if (info.totalDays > 0) meta.push("已过 " + info.totalDays + " 天");
 
@@ -2182,11 +2342,103 @@
     }
   }
 
+  // 导出纪念日到日历（.ics）
+  // 农历纪念日由服务端逐次展开成公历事件，这里只管把文件交出去。
+  async function exportMemorials() {
+    const btn = $("memExport");
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "生成中…";
+
+    const p = (n) => String(n).padStart(2, "0");
+    const now = new Date();
+    const filename = "纪念日-" + now.getFullYear() + p(now.getMonth() + 1) + p(now.getDate()) + ".ics";
+
+    // 原生 App：WebView 里 <a download> 无效，改走 plus.downloader
+    if (window.__NATIVE_APP__ && window.plus && window.plus.downloader) {
+      try {
+        const task = window.plus.downloader.createDownload(
+          API_BASE + "/api/memorials.ics",
+          {
+            filename: "_downloads/" + filename,
+            headers: { Authorization: "Bearer " + token },
+            timeout: 30,
+          },
+          function (t, status) {
+            btn.disabled = false;
+            btn.textContent = old;
+            if (status === 200 && t && t.filename) {
+              showToast("已保存 " + filename + "，点「打开」用日历 App 导入。", {
+                actionLabel: "打开",
+                ms: 15000,
+                onAction: function () {
+                  window.plus.runtime.openFile(t.filename, {}, function () {
+                    showToast("没有能打开 .ics 的应用，可先安装一个日历 App 再试。", { ms: 7000 });
+                  });
+                },
+              });
+            } else {
+              showToast("导出失败（状态码 " + status + "），请检查网络后重试。", { ms: 8000 });
+            }
+          }
+        );
+        task.start();
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = old;
+        showToast("导出失败：" + ((e && e.message) || "原生下载不可用"), { ms: 8000 });
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch(API_BASE + "/api/memorials.ics", {
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!res.ok) {
+        let msg = "HTTP " + res.status;
+        try {
+          const d = await res.json();
+          if (d && d.error) msg = d.error;
+        } catch (e) { /* 非 JSON */ }
+        throw new Error(msg);
+      }
+      const ics = await res.text();
+      const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      const lunarCount = memorials.filter(function (m) { return m.calendar === "lunar"; }).length;
+      showToast(
+        memorials.length
+          ? "已导出 " + memorials.length + " 个纪念日" +
+            (lunarCount ? "（其中 " + lunarCount + " 个农历，已逐次换算成公历）" : "") +
+            "。用日历 App 打开 .ics 即可导入。"
+          : "已导出，但当前还没有纪念日。",
+        { ms: 9000 }
+      );
+      setMemMsg("已导出 " + memorials.length + " 个纪念日", "ok");
+      setTimeout(function () { setMemMsg(""); }, 2400);
+    } catch (e) {
+      showToast("导出失败：" + ((e && e.message) || "请稍后重试"), { ms: 8000 });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  }
+
   function openMemorial() {
     $("appView").classList.add("hidden");
     $("memorialView").classList.remove("hidden");
     // 新建时日期默认填今天，省得每次都要点日历
     if (!memEditingId && !$("memDate").value) $("memDate").value = dateKey(new Date());
+    buildLunarSelectors();
     renderMemorials();
     loadMemorials();
   }
@@ -2202,6 +2454,8 @@
     $("memNote").value = "";
     $("memDate").value = "";
     $("memRepeat").checked = true;
+    $("memLunarLeap").checked = false;
+    setMemCalendar("solar");
     $("memAddBtn").textContent = "＋ 添加纪念日";
     $("memAddBtn").disabled = false;
     $("memCancel").classList.add("hidden");
@@ -2213,9 +2467,21 @@
     if (!m) return;
     memEditingId = id;
     $("memTitle").value = m.title;
-    $("memDate").value = m.date;
     $("memNote").value = m.note || "";
     $("memRepeat").checked = m.repeat !== "none";
+
+    if (m.calendar === "lunar") {
+      buildLunarSelectors();
+      setMemCalendar("lunar");
+      const parts = String(m.date || "").split("-").map(Number);
+      $("memLunarYear").value = String(parts[0] || new Date().getFullYear());
+      $("memLunarMonth").value = String(parts[1] || 1);
+      $("memLunarDay").value = String(parts[2] || 1);
+      $("memLunarLeap").checked = m.isLeap === true;
+    } else {
+      setMemCalendar("solar");
+      $("memDate").value = m.date;
+    }
     $("memAddBtn").textContent = "保存修改";
     $("memCancel").classList.remove("hidden");
     setMemMsg("");
@@ -2225,7 +2491,7 @@
 
   async function submitMemorial() {
     const title = $("memTitle").value.trim();
-    const date = $("memDate").value;
+    const picked = readMemDate();
     const repeat = $("memRepeat").checked ? "year" : "none";
     const note = $("memNote").value.trim();
 
@@ -2234,9 +2500,8 @@
       $("memTitle").focus();
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(picked.date)) {
       setMemMsg("请选择日期", "error");
-      $("memDate").focus();
       return;
     }
 
@@ -2245,7 +2510,14 @@
     btn.disabled = true;
     btn.textContent = "保存中…";
 
-    const payload = JSON.stringify({ title, date, repeat, note });
+    const payload = JSON.stringify({
+      title,
+      calendar: picked.calendar,
+      date: picked.date,
+      isLeap: picked.isLeap,
+      repeat,
+      note,
+    });
     const res = editing
       ? await api("/api/memorials/" + editing, { method: "PATCH", body: payload })
       : await api("/api/memorials", { method: "POST", body: payload });
@@ -2438,6 +2710,15 @@
   // ---------------- 纪念 ----------------
   $("memBtn").addEventListener("click", openMemorial);
   $("memBack").addEventListener("click", closeMemorial);
+  $("memExport").addEventListener("click", exportMemorials);
+
+  // 公历 / 农历切换
+  $("memCalTabs").addEventListener("click", function (e) {
+    const btn = e.target.closest("button[data-cal]");
+    if (!btn) return;
+    setMemCalendar(btn.dataset.cal);
+    if (memCalendar === "solar" && !$("memDate").value) $("memDate").value = dateKey(new Date());
+  });
   $("memBanner").addEventListener("click", openMemorial);
   $("memCancel").addEventListener("click", resetMemForm);
 

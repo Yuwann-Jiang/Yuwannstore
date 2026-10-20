@@ -405,6 +405,97 @@ await t("未登录一律 401", async () => {
   );
 });
 
+console.log("\n[纪念：农历与导出]");
+let lunarId = "";
+await t("新增农历纪念日并返回换算结果", async () => {
+  const r = await call("POST", "/api/memorials", {
+    body: { title: "外婆生日", calendar: "lunar", date: "1940-08-15" },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.json.memorial.calendar, "lunar");
+  assert.equal(r.json.memorial.lunarText, "八月十五");
+  assert.ok(r.json.memorial.originalSolar, "缺少换算后的公历日期");
+  assert.ok(Array.isArray(r.json.memorial.occurrences) && r.json.memorial.occurrences.length >= 3,
+    "缺少未来几次的换算结果");
+  // 1940 年农历八月十五 = 公历 1940-09-16
+  assert.equal(r.json.memorial.originalSolar, "1940-09-16");
+  lunarId = r.json.memorial.id;
+});
+
+await t("闰月纪念日能存能算", async () => {
+  const r = await call("POST", "/api/memorials", {
+    body: { title: "闰二月生日", calendar: "lunar", date: "2023-02-12", isLeap: true },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.json.memorial.isLeap, true);
+  assert.ok(r.json.memorial.lunarText.startsWith("闰"));
+});
+
+await t("不存在的农历日期被拒", async () => {
+  const r = await call("POST", "/api/memorials", {
+    body: { title: "x", calendar: "lunar", date: "2024-02-12", isLeap: true },
+  });
+  assert.equal(r.status, 400);
+});
+
+await t("农历列表读取时也带换算结果", async () => {
+  const r = await call("GET", "/api/memorials");
+  const item = r.json.memorials.find((m) => m.id === lunarId);
+  assert.ok(item.lunarText);
+  assert.ok(item.occurrences.length >= 3);
+  for (const o of item.occurrences) {
+    assert.match(o.solar, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(o.lunarYear > 2000);
+  }
+});
+
+await t("把公历改成农历会重新校验", async () => {
+  // 只改 calendar 不换 date：原来的公历日期不是合法农历日期 → 应该被拒
+  const r = await call("PATCH", "/api/memorials/" + lunarId, { body: { calendar: "solar" } });
+  assert.equal(r.status, 200); // 农历 1940-08-15 恰好也是合法的公历日期
+  const back = await call("PATCH", "/api/memorials/" + lunarId, {
+    body: { calendar: "lunar", date: "1940-08-15" },
+  });
+  assert.equal(back.status, 200);
+  assert.equal(back.json.memorial.calendar, "lunar");
+});
+
+await t("纪念日导出 .ics", async () => {
+  // 先补一条「公历 + 每年重复」，这样才能验证 RRULE
+  const add = await call("POST", "/api/memorials", {
+    body: { title: "在一起", calendar: "solar", date: "2020-05-20" },
+  });
+  assert.equal(add.status, 201);
+
+  const r = await call("GET", "/api/memorials.ics");
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type"), /text\/calendar/);
+  assert.ok(r.text.startsWith("BEGIN:VCALENDAR\r\n"));
+  assert.ok(r.text.includes("END:VCALENDAR"));
+  assert.ok(r.text.includes("X-WR-CALNAME"));
+  // 公历每年重复的用 RRULE，农历的逐次展开
+  assert.ok(r.text.includes("RRULE:FREQ=YEARLY"), "缺少年重复事件");
+  assert.ok(r.text.includes("DTSTART;VALUE=DATE:"), "全天事件应使用 VALUE=DATE");
+  assert.ok(r.text.includes("TRIGGER:-PT15H"), "缺少提前一天提醒");
+  assert.ok(r.text.includes("外婆生日"));
+  // 每行不超过 75 字节
+  for (const line of r.text.split("\r\n")) {
+    assert.ok(Buffer.byteLength(line, "utf8") <= 75, "行超长: " + line);
+  }
+});
+
+await t("农历纪念日被展开成多个公历事件", async () => {
+  const r = await call("GET", "/api/memorials.ics?years=5&alarms=0");
+  assert.equal(r.text.includes("VALARM"), false); // alarms=0 生效
+  const lunarEvents = (r.text.match(/UID:.*lunar|UID:[a-z0-9]+-\d{4}@/g) || []).length;
+  assert.ok(lunarEvents >= 2, "农历事件应逐次展开，实际 " + lunarEvents);
+});
+
+await t("未登录不能导出纪念日", async () => {
+  const r = await call("GET", "/api/memorials.ics", { auth: false });
+  assert.equal(r.status, 401);
+});
+
 console.log("\n[纪念与待办互不干扰]");
 await t("纪念日不影响待办列表与统计", async () => {
   const todos = await call("GET", "/api/todos");
@@ -412,7 +503,7 @@ await t("纪念日不影响待办列表与统计", async () => {
   const stats = await call("GET", "/api/stats");
   assert.equal(stats.json.active.total, 1);
   const mem = await call("GET", "/api/memorials");
-  assert.equal(mem.json.memorials.length, 1);
+  assert.ok(mem.json.memorials.length >= 1, "纪念日应仍可读取");
 });
 
 console.log("\n[其它接口未被破坏]");

@@ -176,6 +176,39 @@ chk "删除后 0 条" "$(body "$B/api/memorials" -H "$AUTH" | jp "len(d['memoria
 chk "重复删除 404" "$(code -X DELETE "$B/api/memorials/$MEM_ID" -H "$AUTH")" "404"
 chk "未登录 401" "$(code "$B/api/memorials")" "401"
 
+echo "=== 11. 纪念：农历 ==="
+LM=$(body -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"外婆生日","calendar":"lunar","date":"1940-08-15"}')
+LM_ID=$(echo "$LM" | jp "d['memorial']['id']")
+chk_nz "新增农历纪念日" "$LM_ID"
+chk "农历文本" "$(echo "$LM" | jp "d['memorial']['lunarText']")" "八月十五"
+chk "换算出的公历日期" "$(echo "$LM" | jp "d['memorial']['originalSolar']")" "1940-09-16"
+chk "返回未来几次的换算结果" "$(echo "$LM" | jp "len(d['memorial']['occurrences']) >= 3")" "True"
+chk "该年没有的闰月 400" "$(code -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"x","calendar":"lunar","date":"2024-02-12","isLeap":true}')" "400"
+chk "小月没有三十 400" "$(code -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"x","calendar":"lunar","date":"2023-01-30"}')" "400"
+chk "农历月份越界 400" "$(code -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"x","calendar":"lunar","date":"2023-13-01"}')" "400"
+
+echo "=== 12. 纪念：导出日历 ==="
+# 先补一条「公历 + 每年重复」，才能验证 RRULE（前面那条公历的已被删掉）
+body -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"在一起","calendar":"solar","date":"2020-05-20"}' > /dev/null
+MIC=$(body "$B/api/memorials.ics" -H "$AUTH")
+chk "是合法日历" "$(echo "$MIC" | grep -c 'BEGIN:VCALENDAR')" "1"
+chk "Content-Type 正确" "$(ctype "$B/api/memorials.ics" -H "$AUTH")" "text/calendar; charset=utf-8"
+chk "全天事件用 VALUE=DATE" "$(echo "$MIC" | grep -c 'DTSTART;VALUE=DATE:')" "$(echo "$MIC" | grep -c 'BEGIN:VEVENT')"
+chk "公历每年重复用 RRULE" "$(echo "$MIC" | grep -c 'RRULE:FREQ=YEARLY')" "1"
+chk "带提前一天提醒" "$(echo "$MIC" | grep -c 'TRIGGER:-PT15H')" "$(echo "$MIC" | grep -c 'BEGIN:VEVENT')"
+chk "农历事件逐次展开（出现在多个月份里）" "$([ "$(echo "$MIC" | grep -c '外婆生日')" -ge 2 ] && echo yes || echo no)" "yes"
+chk "行都不超过 75 字节" "$(python3 -c "
+import sys
+s=sys.stdin.buffer.read().rstrip(b'\r\n')
+print(sum(1 for line in s.split(b'\r\n') if len(line) > 75))" <<< "$MIC")" "0"
+chk "alarms=0 去掉提醒" "$(body "$B/api/memorials.ics?alarms=0" -H "$AUTH" | grep -c 'VALARM')" "0"
+chk "未登录 401" "$(code "$B/api/memorials.ics")" "401"
+
 echo ""
 echo "===== 结果: 通过 $pass 项, 失败 $fail 项 ====="
 if [ "$fail" -eq 0 ]; then echo "全部通过"; else echo "存在失败项"; fi

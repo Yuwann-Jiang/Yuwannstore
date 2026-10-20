@@ -9,16 +9,26 @@
 //
 // 每条纪念日的结构：
 //   {
-//     id:      12 位随机串
-//     title:   纪念什么，≤ 50 字
-//     date:    "YYYY-MM-DD"（纪念日那一年的原始日期）
-//     repeat:  "year" = 每年重复（生日/纪念日）｜"none" = 只此一次
-//     note:    备注，可选，≤ 200 字
-//     created: 创建时间戳
+//     id:       12 位随机串
+//     title:    纪念什么，≤ 50 字
+//     calendar: "solar" = 公历（默认）｜"lunar" = 农历
+//     date:     "YYYY-MM-DD"
+//               · calendar=solar 时是公历日期
+//               · calendar=lunar 时是农历日期（年-月-日，日是初一…三十）
+//     isLeap:   仅农历有意义：那一天是否落在闰月
+//     repeat:   "year" = 每年重复（生日/纪念日）｜"none" = 只此一次
+//     note:     备注，可选，≤ 200 字
+//     created:  创建时间戳
 //     updatedAt: 有编辑过才有
 //   }
+//
+// 为什么农历也存 "YYYY-MM-DD"：农历日期同样是"日历上的一天"，
+// 用字符串存既能人读又能直接校验；换算成公历由 lib/lunar.js 负责。
+
+import { lunar2solar, MIN_YEAR as LUNAR_MIN_YEAR, MAX_YEAR as LUNAR_MAX_YEAR } from "./lunar.js";
 
 export const MAX_MEMORIALS = 500;
+export const CALENDAR_VALUES = ["solar", "lunar"];
 export const MAX_TITLE_LEN = 50;
 export const MAX_NOTE_LEN = 200;
 export const REPEAT_VALUES = ["year", "none"];
@@ -60,6 +70,31 @@ export function normalizeNote(input) {
   return s ? s.slice(0, MAX_NOTE_LEN) : "";
 }
 
+// 农历日期：必须是真实存在的农历日（含闰月是否存在、该月是否有三十）
+export function normalizeLunarDate(input, isLeap = false) {
+  const s = String(input ?? "").trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (y < LUNAR_MIN_YEAR || y > LUNAR_MAX_YEAR) return null;
+  if (mo < 1 || mo > 12) return null;
+  if (d < 1 || d > 30) return null;
+
+  // lunar2solar 会顺手验证：该年是否有这个闰月、该月有没有三十
+  const solar = lunar2solar(y, mo, d, isLeap);
+  if (!solar) return null;
+  return { text: s, solar };
+}
+
+export function normalizeCalendar(input) {
+  const s = String(input ?? "").trim().toLowerCase();
+  if (!s) return "solar";
+  return CALENDAR_VALUES.includes(s) ? s : null;
+}
+
 export function normalizeRepeat(input) {
   const s = String(input ?? "").trim().toLowerCase();
   // 默认「每年重复」：纪念日绝大多数是周年性的，
@@ -85,10 +120,44 @@ export function validateMemorial(body, { partial = false } = {}) {
     out.title = title;
   }
 
+  // 日历类型：默认公历
+  let calendar = body.calendar === undefined ? (partial ? undefined : "solar") : normalizeCalendar(body.calendar);
+  if (calendar === null) return { ok: false, error: "日历类型只能是 solar 或 lunar" };
+  if (calendar !== undefined) out.calendar = calendar;
+
+  // 是否闰月（只有农历有意义）
+  let isLeap = false;
+  if (body.isLeap !== undefined) {
+    if (typeof body.isLeap !== "boolean") return { ok: false, error: "isLeap 必须是布尔值" };
+    isLeap = body.isLeap;
+  }
+
   if (!partial || body.date !== undefined) {
-    const date = normalizeDate(body.date);
-    if (date === null) return { ok: false, error: "日期格式应为 2023-05-20 这样的真实日期" };
-    out.date = date;
+    if (calendar === "lunar") {
+      const lunar = normalizeLunarDate(body.date, isLeap);
+      if (lunar === null) {
+        return {
+          ok: false,
+          error: isLeap
+            ? "这不是一个存在的农历日期（该年可能没有这个闰月，或这个月没有三十）"
+            : "这不是一个存在的农历日期（请检查月份与初一～三十）",
+        };
+      }
+      out.date = lunar.text;
+    } else {
+      const date = normalizeDate(body.date);
+      if (date === null) return { ok: false, error: "日期格式应为 2023-05-20 这样的真实日期" };
+      out.date = date;
+    }
+  }
+
+  // 公历没有闰月概念，存下来会让人误解，直接归零
+  const effectiveCalendar = out.calendar || (partial ? undefined : "solar");
+  if (effectiveCalendar === "lunar") {
+    if (body.isLeap !== undefined) out.isLeap = isLeap;
+    else if (!partial) out.isLeap = false;
+  } else if (body.isLeap !== undefined || !partial) {
+    out.isLeap = false;
   }
 
   if (body.repeat !== undefined) {
