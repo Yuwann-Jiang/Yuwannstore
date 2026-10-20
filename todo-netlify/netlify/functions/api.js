@@ -8,6 +8,7 @@ import { webcrypto as crypto } from "node:crypto";
 import { createMailer, runNotify } from "../../lib/notify.js";
 import { computeStats } from "../../lib/stats.js";
 import { buildCalendar } from "../../lib/ics.js";
+import { validateMemorial, MAX_MEMORIALS } from "../../lib/memorial.js";
 
 const PBKDF2_ITERATIONS = 100000;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 会话有效期：30 天
@@ -135,9 +136,17 @@ const userKey = (username) => `user:${username}`;
 const todosKey = (username) => `todos:${username}`;
 const sessionKey = (token) => `session:${token}`;
 const completionsKey = (username) => `completions:${username}`;
+const memorialsKey = (username) => `memorials:${username}`;
 
 // 完成记录最多保留条数，防止无限增长
 const MAX_COMPLETIONS = 3000;
+
+// 纪念日列表（上限见 lib/memorial.js 的 MAX_MEMORIALS）
+async function getMemorials(username) {
+  const r = await storeGet(memorialsKey(username));
+  if (!r.ok) return { ok: false };
+  return { ok: true, list: Array.isArray(r.value) ? r.value : [] };
+}
 
 // 存储服务不可用时的统一响应
 const STORAGE_DOWN = () => json({ error: "存储服务暂时不可用，请稍后重试" }, 503);
@@ -830,6 +839,75 @@ async function handle(req) {
     return text(ics, "text/calendar; charset=utf-8", {
       "Content-Disposition": 'attachment; filename="todos.ics"; filename*=UTF-8\'\'%E5%BE%85%E5%8A%9E.ics',
     });
+  }
+
+  // ---------------- 纪念 ----------------
+  // 与待办完全分开存储（memorials:<用户名>），互不影响：
+  // 待办会被"完成"删除，纪念日则要长期保留。
+  // 日期一律存 "YYYY-MM-DD" 字符串，倒计时由前端按本地时区计算
+  // （为什么不用时间戳：见 lib/memorial.js 顶部的说明）。
+  if (path === "/api/memorials" && req.method === "GET") {
+    const r = await getMemorials(currentUser);
+    if (!r.ok) return STORAGE_DOWN();
+    return json({ memorials: r.list });
+  }
+
+  if (path === "/api/memorials" && req.method === "POST") {
+    const body = await readJsonBody(req);
+    const v = validateMemorial(body);
+    if (!v.ok) return json({ error: v.error }, 400);
+
+    const r = await getMemorials(currentUser);
+    if (!r.ok) return STORAGE_DOWN();
+    if (r.list.length >= MAX_MEMORIALS) {
+      return json({ error: "纪念日最多 " + MAX_MEMORIALS + " 条" }, 400);
+    }
+
+    const item = {
+      id: randomToken().slice(0, 12),
+      title: v.value.title,
+      date: v.value.date,
+      repeat: v.value.repeat,
+      note: v.value.note,
+      created: Date.now(),
+    };
+    const list = r.list.concat([item]);
+    const w = await storeSet(memorialsKey(currentUser), list);
+    if (!w.ok) return STORAGE_DOWN();
+    return json({ memorial: item, memorials: list }, 201);
+  }
+
+  const memMatch = path.match(/^\/api\/memorials\/([A-Za-z0-9]+)$/);
+
+  if (memMatch && req.method === "PATCH") {
+    const id = memMatch[1];
+    const body = await readJsonBody(req);
+    const v = validateMemorial(body, { partial: true });
+    if (!v.ok) return json({ error: v.error }, 400);
+
+    const r = await getMemorials(currentUser);
+    if (!r.ok) return STORAGE_DOWN();
+    const target = r.list.find((x) => x.id === id);
+    if (!target) return json({ error: "该纪念日不存在" }, 404);
+
+    Object.assign(target, v.value);
+    target.updatedAt = Date.now();
+    const w = await storeSet(memorialsKey(currentUser), r.list);
+    if (!w.ok) return STORAGE_DOWN();
+    return json({ memorial: target, memorials: r.list });
+  }
+
+  if (memMatch && req.method === "DELETE") {
+    const id = memMatch[1];
+    const r = await getMemorials(currentUser);
+    if (!r.ok) return STORAGE_DOWN();
+    if (!r.list.some((x) => x.id === id)) {
+      return json({ error: "该纪念日不存在" }, 404);
+    }
+    const list = r.list.filter((x) => x.id !== id);
+    const w = await storeSet(memorialsKey(currentUser), list);
+    if (!w.ok) return STORAGE_DOWN();
+    return json({ ok: true, memorials: list });
   }
 
   return json({ error: "接口不存在", path }, 404);

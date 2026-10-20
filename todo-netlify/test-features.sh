@@ -148,6 +148,34 @@ chk "改时间生效" "$(echo "$P" | jp "d['todo']['deadline']")" "$DL"
 chk "标记了 updatedAt" "$(echo "$P" | jp "'updatedAt' in d['todo']")" "True"
 chk "改名后统计里 1 条在 24 小时内" "$(body "$B/api/stats" -H "$AUTH" | jp "d['active']['within1d']")" "2"
 
+echo "=== 10. 纪念：增删改查 ==="
+chk "初始为空" "$(body "$B/api/memorials" -H "$AUTH" | jp "len(d['memorials'])")" "0"
+MEM=$(body -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"在一起","date":"2023-05-20"}')
+MEM_ID=$(echo "$MEM" | jp "d['memorial']['id']")
+chk_nz "新增拿到 id" "$MEM_ID"
+chk "默认每年重复" "$(echo "$MEM" | jp "d['memorial']['repeat']")" "year"
+chk "日期原样保存" "$(echo "$MEM" | jp "d['memorial']['date']")" "2023-05-20"
+chk "列表 1 条" "$(body "$B/api/memorials" -H "$AUTH" | jp "len(d['memorials'])")" "1"
+chk "不存在的日期 400" "$(code -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"x","date":"2023-02-30"}')" "400"
+chk "空名称 400" "$(code -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"  ","date":"2023-05-20"}')" "400"
+chk "缺日期 400" "$(code -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" -d '{"title":"x"}')" "400"
+chk "非法重复方式 400" "$(code -X POST "$B/api/memorials" -H "$AUTH" -H "$JSON" \
+  -d '{"title":"x","date":"2023-05-20","repeat":"weekly"}')" "400"
+
+PATCHED=$(body -X PATCH "$B/api/memorials/$MEM_ID" -H "$AUTH" -H "$JSON" -d '{"title":"在一起的第 1 天"}')
+chk "改名生效" "$(echo "$PATCHED" | jp "d['memorial']['title']")" "在一起的第 1 天"
+chk "没传的字段不变" "$(echo "$PATCHED" | jp "d['memorial']['date']")" "2023-05-20"
+chk "标记了 updatedAt" "$(echo "$PATCHED" | jp "'updatedAt' in d['memorial']")" "True"
+chk "改不存在 404" "$(code -X PATCH "$B/api/memorials/deadbeef" -H "$AUTH" -H "$JSON" -d '{"title":"x"}')" "404"
+
+chk "删除成功" "$(code -X DELETE "$B/api/memorials/$MEM_ID" -H "$AUTH")" "200"
+chk "删除后 0 条" "$(body "$B/api/memorials" -H "$AUTH" | jp "len(d['memorials'])")" "0"
+chk "重复删除 404" "$(code -X DELETE "$B/api/memorials/$MEM_ID" -H "$AUTH")" "404"
+chk "未登录 401" "$(code "$B/api/memorials")" "401"
+
 echo ""
 echo "===== 结果: 通过 $pass 项, 失败 $fail 项 ====="
 if [ "$fail" -eq 0 ]; then echo "全部通过"; else echo "存在失败项"; fi

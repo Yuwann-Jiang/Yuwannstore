@@ -58,6 +58,7 @@
 | `lib/notify.js` | 多级提醒的判定逻辑 + 自写的 SMTP 客户端 |
 | `lib/stats.js` | 统计计算（纯函数，不依赖 Netlify 环境） |
 | `lib/ics.js` | 日历文件生成（纯函数） |
+| `lib/memorial.js` | 纪念日的校验与规范化（纯函数） |
 | `public/index.html` | 前端单文件应用 |
 
 **关键点：前后端同源。** 前端页面和 API 都由 `yuwann-todo.netlify.app` 提供，
@@ -108,6 +109,7 @@ Key 使用 `类型:用户名` 的形式，Value 是 JSON。
 | `user:<用户名>` | `{ salt, hash, createdAt, email?, isAdmin? }` | 账号。<br>`salt` 16 字节随机盐（hex）<br>`hash` PBKDF2-SHA256 结果（hex，256 位）<br>`email` 可选，绑定后才有<br>`isAdmin` 可选，管理员为 `true` |
 | `todos:<用户名>` | `[{ id, text, deadline, created, updatedAt?, notifiedStages?, notifiedStage?, notified?, notifiedAt? }]` | 该用户的全部待办数组<br>`deadline` 是毫秒时间戳<br>`notifiedStages` 记录**已发过的提醒档位**（`3d`/`1d`/`overdue`）<br>`notified` 是旧版布尔字段，仅为兼容保留 |
 | `session:<token>` | `{ username, createdAt }` | 会话。token 是 32 字节随机值（hex）<br>有效期 30 天，**在读取时惰性判断过期** |
+| `memorials:<用户名>` | `[{ id, title, date, repeat, note, created, updatedAt? }]` | 纪念日<br>`date` 是 **`"YYYY-MM-DD"` 字符串**（不是时间戳）<br>`repeat` 为 `year`（每年重复）/ `none`<br>上限 500 条 |
 | `completions:<用户名>` | `[{ id, text, at, deadline, onTime }]` | 完成历史，热力图与统计的数据源<br>`id` 12 位随机串，撤销完成时用于精确回滚<br>`at` 完成时间戳<br>`onTime` 是否在截止前完成<br>**上限 3000 条**，超出丢弃最旧的 |
 | `notify:lastRun` | `{ at, trigger, scannedUsers, sent, failed, error }` | 定时任务最近一次运行记录，供 `/api/notify-status` 查询 |
 
@@ -277,6 +279,7 @@ if (path === "/api/register" && req.method === "POST") { ... }
 | 登录/注册 | `authView` | 用户名密码表单，登录/注册 Tab 切换 |
 | 主应用 | `appView` | 用户栏、邮箱栏、添加表单、待办列表、统计/导出按钮、热力图 |
 | 统计 | `statsView` | 指标卡、每日/每周/星期/时段柱状图、待办时间分布 |
+| 纪念 | `memorialView` | 纪念日列表（倒计时）、添加 / 编辑 / 删除 |
 | 管理后台 | `adminView` | 仅管理员可见 |
 
 启动流程（`init()`）：
@@ -367,6 +370,37 @@ if (path === "/api/register" && req.method === "POST") { ... }
 
 > 为什么不直接 `window.open("/api/calendar.ics")`：新窗口不会带认证头，只会拿到 401；
 > 也不把 token 放查询串——那会留在浏览器历史与访问日志里。
+>
+> 例外：**原生 App 里 `<a download>` 不会触发任何下载**（WebView 没有下载管理器），
+> 所以 `window.__NATIVE_APP__` 为真时改走 5+App 的 `plus.downloader`：
+> 带 `Authorization` 头下载到手机「下载」目录，再给一个「打开」按钮交给系统日历 App。
+
+### 纪念
+
+纪念日是「有纪念意义的日期」，独立成一个视图，数据走 `/api/memorials`。
+
+**为什么日期存字符串、倒计时在前端算**
+
+| 做法 | 结果 |
+|---|---|
+| 存时间戳（服务端算） | 北京时间 `2023-05-20 00:00` 在 UTC 是 `05-19 16:00`，换个时区就**错一天** |
+| **存 `"YYYY-MM-DD"`，前端按本机时区算** | 永远不漂移；时区与夏令时交给浏览器 |
+
+这跟统计页的取舍**正好相反**：统计页必须在服务端统一口径（否则和热力图对不上），
+而纪念日只涉及单个日期，前端算最简单也最不容易错。
+
+**倒计时规则**（`memorialInfo()`）
+
+| 情况 | 显示 |
+|---|---|
+| `repeat=year`，今年这一天未到 | 还有 N 天 · 第 K 周年 |
+| `repeat=year`，今年这一天已过 | 顺延到明年，还有 N 天 · 第 K+1 周年 |
+| 恰好是今天 | 就是今天 🎉 |
+| `repeat=none` 且已过 | 已过 N 天 |
+
+排序：今天与将到的排前面（越近越前），已经过去的排后面（越近越前）。
+主界面顶部还有一个提示条（`renderMemBanner()`）：今天有纪念日就显示「今天是「XXX」」，
+7 天内有就显示「「XXX」还有 N 天」，都没有则隐藏。
 
 ---
 
@@ -513,6 +547,8 @@ cd todo-netlify && python3 build-native-html.py
 | 撤销必须回滚完成记录 | 否则热力图多一格、准时率虚高，数据慢慢变脏 |
 | 日历导出用 `VEVENT` 而非 `VTODO` | Google 日历对 `VTODO` 支持极差，导入后常什么都不显示 |
 | 提醒分三档而非只提醒一次 | 「剩余 1 天才提醒」对提前规划的待办太晚 |
+| 纪念日日期存字符串而非时间戳 | 纪念日是日历上的一天，时间戳跨时区会错一天 |
+| 纪念日单独一个存储键 | 待办完成即删除，纪念日要长期保留，生命周期不同 |
 
 ---
 
@@ -532,6 +568,8 @@ cd todo-netlify && python3 build-native-html.py
    极重度使用下可能被截断（统计页与热力图都受此限制）
 10. **日历导出是一次性快照** — 不提供订阅地址（那需要把 token 放进 URL 或另做
     公开链接，涉及凭据泄露风险），加了新待办需要重新导出一次
+11. **纪念日不支持农历** — 农历生日/祭日暂时只能按公历记；要做需引入农历换算表
+12. **纪念日不参与统计、也不导出到日历** — 目前只在纪念页与首页提示条出现
 
 ---
 

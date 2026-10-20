@@ -73,12 +73,13 @@
 
   .field-block { margin-bottom: 15px; }
   .field-block label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
-  input[type="text"], input[type="password"], input[type="datetime-local"] {
+  input[type="text"], input[type="password"], input[type="datetime-local"], input[type="date"] {
     width: 100%; padding: 11px 12px; font-size: 15px; border: 1px solid var(--border);
     border-radius: 9px; background: #fff; color: var(--text); outline: none;
     transition: border-color .15s, box-shadow .15s; font-family: inherit;
   }
-  input[type="text"]:focus, input[type="password"]:focus, input[type="datetime-local"]:focus {
+  input[type="text"]:focus, input[type="password"]:focus, input[type="datetime-local"]:focus,
+  input[type="date"]:focus {
     border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
   }
   button {
@@ -451,6 +452,83 @@
   .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
   .stats-empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 26px 0; }
+
+  /* ---------- 纪念 ---------- */
+  .mem-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+  }
+  .mem-title { font-size: 20px; font-weight: 600; }
+  .mem-sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+  .mem-form { margin-bottom: 16px; }
+  .mem-opts {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 12px;
+  }
+  .mem-opts label {
+    display: flex; align-items: center; gap: 7px; margin: 0;
+    font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap;
+  }
+  .mem-opts input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+  .mem-opts .grow { flex: 1 1 200px; min-width: 0; }
+  .mem-form-foot { display: flex; gap: 9px; margin-top: 14px; flex-wrap: wrap; }
+
+  .mem-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .mem-item {
+    background: var(--card); border: 1px solid var(--border);
+    border-left: 5px solid #c9cfe0; border-radius: 12px;
+    padding: 14px 16px; display: flex; align-items: center; gap: 14px;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
+  }
+  .mem-item.today { border-left-color: var(--primary); background: #f7f7ff; }
+  .mem-item.soon { border-left-color: var(--yellow); }
+  .mem-item.past { border-left-color: #c9cfe0; background: #fbfbfd; }
+
+  .mem-emoji {
+    flex: 0 0 auto; width: 42px; height: 42px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 21px; background: #f1f3f8;
+  }
+  .mem-item.today .mem-emoji { background: var(--primary); }
+  .mem-body { flex: 1 1 auto; min-width: 0; }
+  .mem-name { font-size: 15.5px; font-weight: 600; word-break: break-word; }
+  .mem-meta {
+    font-size: 12.5px; color: var(--muted); margin-top: 4px;
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .mem-note { font-size: 12.5px; color: var(--muted); margin-top: 5px; word-break: break-word; }
+
+  .mem-count { flex: 0 0 auto; text-align: right; }
+  .mem-count .n { font-size: 19px; font-weight: 700; color: var(--primary); line-height: 1.15; }
+  .mem-count .n.past { color: var(--muted); font-size: 15px; }
+  .mem-count .u { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .mem-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+
+  .mem-empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 30px 0; }
+
+  /* 主界面上的「今天/近期有纪念日」提示条 */
+  .mem-banner {
+    display: flex; align-items: center; gap: 12px;
+    background: #f5f5ff; border: 1px solid #dcdcf7; border-left: 5px solid var(--primary);
+    border-radius: 12px; padding: 12px 15px; margin-bottom: 16px;
+    cursor: pointer; text-align: left; width: 100%; font-family: inherit;
+    transition: border-color .12s, background .12s;
+  }
+  .mem-banner:hover { background: #eeeefc; border-color: var(--primary); }
+  .mem-banner .b-emoji { font-size: 20px; flex: 0 0 auto; }
+  .mem-banner .b-body { flex: 1 1 auto; min-width: 0; }
+  .mem-banner .b-main { font-size: 14px; font-weight: 600; color: var(--text); }
+  .mem-banner .b-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .mem-banner .b-arrow { color: var(--primary); font-size: 16px; flex: 0 0 auto; }
+
+  @media (max-width: 560px) {
+    .mem-item { padding: 12px 13px; gap: 11px; }
+    .mem-emoji { width: 36px; height: 36px; font-size: 18px; }
+    .mem-name { font-size: 14.5px; }
+    .mem-count .n { font-size: 17px; }
+  }
 </style>
 </head>
 <body>
@@ -521,6 +599,16 @@
       <p class="ehint">提醒分三档：剩余 3 天、剩余 1 天、已超时，各发一封邮件（同一档不会重复发）。改过截止时间后会按新时间重新计算。</p>
     </div>
 
+    <!-- 今天 / 7 天内有没有纪念日，有的话在这里提示 -->
+    <button class="mem-banner hidden" id="memBanner" type="button">
+      <span class="b-emoji" id="memBannerEmoji">🎗</span>
+      <span class="b-body">
+        <span class="b-main" id="memBannerMain"></span>
+        <span class="b-sub" id="memBannerSub"></span>
+      </span>
+      <span class="b-arrow">›</span>
+    </button>
+
     <div class="legend">
       <span><i style="background:var(--red)"></i>红 ≤ 24小时</span>
       <span><i style="background:var(--yellow)"></i>黄 &gt;24h 且 ≤4天</span>
@@ -561,8 +649,9 @@
     <div id="empty" class="empty">暂无待办事项，从上方添加一条吧。</div>
     <ul class="list" id="list"></ul>
 
-    <!-- 快捷操作：统计页 / 导出到日历 -->
+    <!-- 快捷操作：纪念 / 统计 / 导出到日历 -->
     <div class="quick-actions">
+      <button class="qa-btn" id="memBtn" type="button">🎗 纪念</button>
       <button class="qa-btn" id="statsBtn" type="button">📊 统计</button>
       <button class="qa-btn" id="exportBtn" type="button">📅 导出日历</button>
     </div>
@@ -646,6 +735,41 @@
       <div class="stats-block-sub">按剩余时间分档，帮你判断现在该先做哪些</div>
       <div class="chips" id="activeChips"></div>
     </div>
+  </section>
+
+  <!-- ================= 纪念 ================= -->
+  <section id="memorialView" class="hidden">
+    <div class="mem-head">
+      <div>
+        <div class="mem-title">🎗 纪念</div>
+        <div class="mem-sub" id="memSub">把重要的日子记在这里，它会一直帮你数日子</div>
+      </div>
+      <button class="btn-ghost" id="memBack" type="button">← 返回待办</button>
+    </div>
+
+    <form class="form mem-form" id="memForm">
+      <div class="row">
+        <div class="field">
+          <label for="memTitle">纪念什么</label>
+          <input type="text" id="memTitle" maxlength="50" placeholder="例如：和小满第一次见面" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="memDate">日期</label>
+          <input type="date" id="memDate" />
+        </div>
+      </div>
+      <div class="mem-opts">
+        <label><input type="checkbox" id="memRepeat" checked /> 每年重复（生日 / 纪念日）</label>
+        <input type="text" class="grow" id="memNote" maxlength="200" placeholder="备注（可选）" autocomplete="off" />
+      </div>
+      <div class="mem-form-foot">
+        <button type="submit" class="btn-add" id="memAddBtn">＋ 添加纪念日</button>
+        <button class="btn-ghost hidden" id="memCancel" type="button">取消编辑</button>
+      </div>
+      <div class="msg" id="memMsg"></div>
+    </form>
+
+    <div class="mem-list" id="memList"></div>
   </section>
 
   <!-- ================= 管理后台（仅管理员可见） ================= -->
@@ -776,12 +900,15 @@
     $("authView").classList.add("hidden");
     $("appView").classList.remove("hidden");
     $("statsView").classList.add("hidden");
+    $("memorialView").classList.add("hidden");
     $("currentUser").textContent = username;
     $("avatar").textContent = username.slice(0, 1).toUpperCase();
     $("emailFormWrap").classList.add("hidden");
     setEmailMsg("");
     loadProfile();
     loadCompletions();
+    // 纪念日只在登录/切换回来时拉一次；改动后由各操作自己刷新
+    loadMemorials(true);
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(() => loadTodos(true), POLL_MS);
   }
@@ -1352,10 +1479,14 @@
     isAdmin = false;
     adminUsers = [];
     undoState = null;
+    memorials = [];
+    memEditingId = null;
     hideToast();
     $("adminBtn").classList.add("hidden");
     $("adminView").classList.add("hidden");
     $("statsView").classList.add("hidden");
+    $("memorialView").classList.add("hidden");
+    $("memBanner").classList.add("hidden");
     showAuth();
   }
 
@@ -1821,6 +1952,338 @@
     }
   }
 
+  // =====================================================================
+  // 纪念
+  //
+  // 数据走 /api/memorials（增删改查），日期存 "YYYY-MM-DD" 字符串。
+  // 「还有几天」全部在本机算 —— 时区、夏令时都由浏览器负责，最不容易错。
+  // =====================================================================
+  let memorials = [];
+  let memEditingId = null;
+
+  // "2023-05-20" → 本地时间当天 0 点
+  function parseDateKey(k) {
+    const parts = String(k || "").split("-");
+    if (parts.length !== 3) return null;
+    const y = Number(parts[0]);
+    const mo = Number(parts[1]);
+    const d = Number(parts[2]);
+    if (!y || !mo || !d) return null;
+    const dt = new Date(y, mo - 1, d);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+
+  function midnightToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  // 两个「本地 0 点」相差多少天（可能为负数）
+  function daysBetween(a, b) {
+    return Math.round((b.getTime() - a.getTime()) / 86400000);
+  }
+
+  /**
+   * 算出一个纪念日现在该怎么显示。
+   * 返回 { days, kind, years, totalDays, next }
+   *   kind: "today" 就是今天 ｜ "future" 还没到 ｜ "past" 已经过去
+   *   days: 距下一次还有多少天（past 时为负）
+   *   years: 第几周年（仅每年重复时有意义）
+   *   totalDays: 从最初的日期到今天一共多少天
+   */
+  function memorialInfo(m) {
+    const base = parseDateKey(m.date);
+    if (!base) return null;
+
+    const today = midnightToday();
+    const totalDays = daysBetween(base, today);
+    const repeat = m.repeat === "none" ? "none" : "year";
+
+    if (repeat === "year") {
+      // 今年这一天；已经过了就顺延到明年
+      let next = new Date(today.getFullYear(), base.getMonth(), base.getDate());
+      if (next.getTime() < today.getTime()) {
+        next = new Date(today.getFullYear() + 1, base.getMonth(), base.getDate());
+      }
+      const days = daysBetween(today, next);
+      return {
+        days,
+        kind: days === 0 ? "today" : "future",
+        years: next.getFullYear() - base.getFullYear(),
+        totalDays,
+        next,
+      };
+    }
+
+    const days = daysBetween(today, base);
+    return {
+      days,
+      kind: days === 0 ? "today" : days > 0 ? "future" : "past",
+      years: null,
+      totalDays,
+    };
+  }
+
+  // 排序：今天和将到的排前面（越近越前），已经过去的排后面（越近越前）
+  function sortMemorials(list) {
+    const scored = [];
+    for (const m of list) {
+      const info = memorialInfo(m);
+      if (info) scored.push({ m, info });
+    }
+    scored.sort(function (a, b) {
+      const aPast = a.info.kind === "past" ? 1 : 0;
+      const bPast = b.info.kind === "past" ? 1 : 0;
+      if (aPast !== bPast) return aPast - bPast;
+      return aPast ? b.info.days - a.info.days : a.info.days - b.info.days;
+    });
+    return scored;
+  }
+
+  function fmtDateKey(k) {
+    const d = parseDateKey(k);
+    if (!d) return String(k || "");
+    return d.getFullYear() + " 年 " + (d.getMonth() + 1) + " 月 " + d.getDate() + " 日";
+  }
+
+  // 按名称猜个小图标，让列表一眼能认出来
+  function emojiOf(m, info) {
+    if (info && info.kind === "today") return "🎉";
+    const t = String(m.title || "");
+    if (/生日|诞辰/.test(t)) return "🎂";
+    if (/结婚|婚礼|婚/.test(t)) return "💍";
+    if (/在一起|恋爱|表白|告白|约会|牵手/.test(t)) return "💕";
+    if (/毕业|开学|入学/.test(t)) return "🎓";
+    if (/入职|工作|上班|面试/.test(t)) return "💼";
+    if (/旅行|出发|出发|启程/.test(t)) return "✈️";
+    if (/逝|追思|悼/.test(t)) return "🕯️";
+    if (/考试|考|答辩/.test(t)) return "📚";
+    if (/搬家|新家|买房/.test(t)) return "🏠";
+    if (/宠物|猫|狗/.test(t)) return "🐾";
+    return "🎗";
+  }
+
+  function setMemMsg(text, kind) {
+    const el = $("memMsg");
+    el.textContent = text || "";
+    el.className = "msg" + (kind ? " " + kind : "");
+  }
+
+  async function loadMemorials(silent) {
+    const { status, data } = await api("/api/memorials");
+    if (status === 200) {
+      memorials = Array.isArray(data.memorials) ? data.memorials : [];
+      renderMemorials();
+      renderMemBanner();
+      return true;
+    }
+    if (!silent) setMemMsg((data && data.error) || "纪念日加载失败，请稍后重试", "error");
+    return false;
+  }
+
+  function renderMemorials() {
+    const box = $("memList");
+    if (!box) return;
+
+    const items = sortMemorials(memorials);
+    $("memSub").textContent = items.length
+      ? "共 " + items.length + " 个日子，它一直帮你数着"
+      : "把重要的日子记在这里，它会一直帮你数日子";
+
+    if (!items.length) {
+      box.innerHTML =
+        '<div class="mem-empty">还没有纪念日。上面填一个日期试试 —— 生日、在一起的纪念日、毕业那天都行。</div>';
+      return;
+    }
+
+    box.innerHTML = items
+      .map(function (row) {
+        const m = row.m;
+        const info = row.info;
+
+        let cls = "";
+        if (info.kind === "today") cls = "today";
+        else if (info.kind === "past") cls = "past";
+        else if (info.days <= 7) cls = "soon";
+
+        const meta = [fmtDateKey(m.date), m.repeat === "year" ? "每年重复" : "只此一次"];
+        if (info.years !== null && info.years > 0) meta.push("第 " + info.years + " 周年");
+        if (info.totalDays > 0) meta.push("已过 " + info.totalDays + " 天");
+
+        const note = m.note
+          ? '<div class="mem-note">' + escapeHtml(m.note) + "</div>"
+          : "";
+
+        let count;
+        if (info.kind === "today") {
+          count = '<div class="n">就是今天</div><div class="u">🎉</div>';
+        } else if (info.kind === "past") {
+          count =
+            '<div class="n past">已过 ' + Math.abs(info.days) + " 天</div>" +
+            '<div class="u">回忆</div>';
+        } else {
+          count = '<div class="n">' + info.days + '</div><div class="u">天后</div>';
+        }
+
+        return (
+          '<div class="mem-item ' + cls + '">' +
+          '<div class="mem-emoji">' + emojiOf(m, info) + "</div>" +
+          '<div class="mem-body">' +
+          '<div class="mem-name">' + escapeHtml(m.title) + "</div>" +
+          '<div class="mem-meta">' +
+          meta.map(function (x) { return "<span>" + escapeHtml(x) + "</span>"; }).join("") +
+          "</div>" +
+          note +
+          "</div>" +
+          '<div class="mem-count">' + count + "</div>" +
+          '<div class="mem-actions">' +
+          '<button class="btn-edit" data-mem-action="edit" data-id="' + m.id + '" type="button" title="编辑">✏️</button>' +
+          '<button class="btn-edit" data-mem-action="del" data-id="' + m.id + '" type="button" title="删除">🗑</button>' +
+          "</div>" +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+  // 主界面顶部提示条：今天有纪念日 / 7 天内有关
+  function renderMemBanner() {
+    const el = $("memBanner");
+    if (!el) return;
+
+    const items = sortMemorials(memorials);
+    const today = items.filter(function (x) { return x.info.kind === "today"; });
+    const soon = items.filter(function (x) {
+      return x.info.kind === "future" && x.info.days <= 7;
+    });
+
+    if (!today.length && !soon.length) {
+      el.classList.add("hidden");
+      return;
+    }
+    el.classList.remove("hidden");
+
+    if (today.length) {
+      $("memBannerEmoji").textContent = "🎉";
+      $("memBannerMain").textContent =
+        "今天是「" + today.map(function (x) { return x.m.title; }).join("」「") + "」";
+      $("memBannerSub").textContent = soon.length
+        ? "另外还有 " + soon.length + " 个日子在 7 天内 · 点这里查看"
+        : "点这里查看所有纪念日";
+    } else {
+      const first = soon[0];
+      $("memBannerEmoji").textContent = emojiOf(first.m, first.info);
+      $("memBannerMain").textContent = "「" + first.m.title + "」还有 " + first.info.days + " 天";
+      $("memBannerSub").textContent =
+        soon.length > 1
+          ? "还有 " + (soon.length - 1) + " 个日子在 7 天内 · 点这里查看"
+          : "点这里查看所有纪念日";
+    }
+  }
+
+  function openMemorial() {
+    $("appView").classList.add("hidden");
+    $("memorialView").classList.remove("hidden");
+    // 新建时日期默认填今天，省得每次都要点日历
+    if (!memEditingId && !$("memDate").value) $("memDate").value = dateKey(new Date());
+    renderMemorials();
+    loadMemorials();
+  }
+
+  function closeMemorial() {
+    $("memorialView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+  }
+
+  function resetMemForm() {
+    memEditingId = null;
+    $("memTitle").value = "";
+    $("memNote").value = "";
+    $("memDate").value = "";
+    $("memRepeat").checked = true;
+    $("memAddBtn").textContent = "＋ 添加纪念日";
+    $("memAddBtn").disabled = false;
+    $("memCancel").classList.add("hidden");
+    setMemMsg("");
+  }
+
+  function startMemEdit(id) {
+    const m = memorials.find(function (x) { return x.id === id; });
+    if (!m) return;
+    memEditingId = id;
+    $("memTitle").value = m.title;
+    $("memDate").value = m.date;
+    $("memNote").value = m.note || "";
+    $("memRepeat").checked = m.repeat !== "none";
+    $("memAddBtn").textContent = "保存修改";
+    $("memCancel").classList.remove("hidden");
+    setMemMsg("");
+    $("memTitle").focus();
+    if ($("memTitle").select) $("memTitle").select();
+  }
+
+  async function submitMemorial() {
+    const title = $("memTitle").value.trim();
+    const date = $("memDate").value;
+    const repeat = $("memRepeat").checked ? "year" : "none";
+    const note = $("memNote").value.trim();
+
+    if (!title) {
+      setMemMsg("请填写纪念什么", "error");
+      $("memTitle").focus();
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setMemMsg("请选择日期", "error");
+      $("memDate").focus();
+      return;
+    }
+
+    const btn = $("memAddBtn");
+    const editing = memEditingId;
+    btn.disabled = true;
+    btn.textContent = "保存中…";
+
+    const payload = JSON.stringify({ title, date, repeat, note });
+    const res = editing
+      ? await api("/api/memorials/" + editing, { method: "PATCH", body: payload })
+      : await api("/api/memorials", { method: "POST", body: payload });
+
+    btn.disabled = false;
+
+    if (res.status === 200 || res.status === 201) {
+      memorials = Array.isArray(res.data.memorials) ? res.data.memorials : memorials;
+      resetMemForm();
+      renderMemorials();
+      renderMemBanner();
+      setMemMsg(editing ? "已保存修改" : "已添加「" + title + "」", "ok");
+      setTimeout(function () { setMemMsg(""); }, 2400);
+      return;
+    }
+
+    btn.textContent = editing ? "保存修改" : "＋ 添加纪念日";
+    setMemMsg((res.data && res.data.error) || "保存失败，请稍后重试", "error");
+  }
+
+  async function removeMemorial(id) {
+    const m = memorials.find(function (x) { return x.id === id; });
+    if (!m) return;
+    if (!confirm("删除纪念日「" + m.title + "」？\n删除后无法恢复。")) return;
+
+    const { status, data } = await api("/api/memorials/" + id, { method: "DELETE" });
+    if (status === 200) {
+      memorials = Array.isArray(data.memorials) ? data.memorials : memorials.filter(function (x) { return x.id !== id; });
+      if (memEditingId === id) resetMemForm();
+      renderMemorials();
+      renderMemBanner();
+      setMemMsg("已删除", "ok");
+      setTimeout(function () { setMemMsg(""); }, 1800);
+      return;
+    }
+    setMemMsg((data && data.error) || "删除失败，请稍后重试", "error");
+  }
+
   // ---------------------------------------------------------------- 事件
   $("tabLogin").addEventListener("click", () => {
     authMode = "login";
@@ -1971,6 +2434,25 @@
   // ---------------- 管理后台交互 ----------------
   $("adminBtn").addEventListener("click", openAdmin);
   $("adminBack").addEventListener("click", closeAdmin);
+
+  // ---------------- 纪念 ----------------
+  $("memBtn").addEventListener("click", openMemorial);
+  $("memBack").addEventListener("click", closeMemorial);
+  $("memBanner").addEventListener("click", openMemorial);
+  $("memCancel").addEventListener("click", resetMemForm);
+
+  $("memForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    submitMemorial();
+  });
+
+  $("memList").addEventListener("click", function (e) {
+    const btn = e.target.closest("[data-mem-action]");
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (btn.dataset.memAction === "edit") startMemEdit(id);
+    else if (btn.dataset.memAction === "del") removeMemorial(id);
+  });
 
   // ---------------- 统计 / 导出 / 浮层提示 ----------------
   $("statsBtn").addEventListener("click", openStats);

@@ -132,7 +132,10 @@ assert.ok(m, "没找到内联脚本");
 const source =
   m[1] +
   "\n;globalThis.__t = { renderStats, renderCols, showToast, hideToast, showUndo," +
-  " fmtPct, fmtDuration, classify, levelOf, calcStreak, dateKey, fmtRemain, shorten, escapeHtml };\n";
+  " fmtPct, fmtDuration, classify, levelOf, calcStreak, dateKey, fmtRemain, shorten, escapeHtml," +
+  " memorialInfo, sortMemorials, renderMemorials, renderMemBanner, emojiOf, parseDateKey," +
+  " daysBetween, fmtDateKey," +
+  " setMemorials: function (l) { memorials = l; }, getMemorials: function () { return memorials; } };\n";
 
 vm.createContext(sandbox);
 vm.runInContext(source, sandbox, { filename: "index.html:inline" });
@@ -306,6 +309,158 @@ t("柱状图内容做了 HTML 转义", () => {
   T.renderCols(el, [{ v: 1, tip: '<script>"x"</script>', label: "<b>" }]);
   assert.equal(el.innerHTML.includes("<script>"), false);
   assert.ok(el.innerHTML.includes("&lt;"));
+});
+
+console.log("\n[纪念：日期解析与倒计时]");
+const DAY = 86400000;
+
+// 相对今天造日期字符串，避免测试依赖具体某一天
+function keyOf(offsetDays) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + offsetDays);
+  return T.dateKey(d);
+}
+
+t("parseDateKey 解析成当天 0 点", () => {
+  const d = T.parseDateKey("2023-05-20");
+  assert.equal(d.getFullYear(), 2023);
+  assert.equal(d.getMonth(), 4);
+  assert.equal(d.getDate(), 20);
+  assert.equal(d.getHours(), 0);
+});
+t("parseDateKey 对脏数据返回 null", () => {
+  assert.equal(T.parseDateKey(""), null);
+  assert.equal(T.parseDateKey("2023/05/20"), null);
+  assert.equal(T.parseDateKey(null), null);
+});
+t("今天就是纪念日 → kind=today", () => {
+  const info = T.memorialInfo({ date: keyOf(0), repeat: "none" });
+  assert.equal(info.kind, "today");
+  assert.equal(info.days, 0);
+});
+t("10 天后 → future, 天数 10", () => {
+  const info = T.memorialInfo({ date: keyOf(10), repeat: "none" });
+  assert.equal(info.kind, "future");
+  assert.equal(info.days, 10);
+});
+t("30 天前的一次性日期 → past, 天数 -30", () => {
+  const info = T.memorialInfo({ date: keyOf(-30), repeat: "none" });
+  assert.equal(info.kind, "past");
+  assert.equal(info.days, -30);
+});
+t("每年重复：过去的日期也算出未来的下一次", () => {
+  const info = T.memorialInfo({ date: "2020-01-15", repeat: "year" });
+  assert.equal(info.kind === "future" || info.kind === "today", true);
+  assert.ok(info.days >= 0 && info.days <= 366, "天数应在一年内，实际 " + info.days);
+  assert.ok(info.years >= 6, "周年数应 ≥ 6，实际 " + info.years);
+  assert.ok(info.totalDays > 0);
+});
+t("每年重复：2 月 29 日不会崩", () => {
+  const info = T.memorialInfo({ date: "2024-02-29", repeat: "year" });
+  assert.ok(info && info.days >= 0 && info.days <= 366);
+});
+t("repeat 缺省时按每年重复处理", () => {
+  const info = T.memorialInfo({ date: "2020-01-15" });
+  assert.equal(info.kind === "future" || info.kind === "today", true);
+});
+t("totalDays 是距今的总天数", () => {
+  const info = T.memorialInfo({ date: keyOf(-100), repeat: "none" });
+  assert.equal(info.totalDays, 100);
+});
+t("非法日期返回 null", () => {
+  assert.equal(T.memorialInfo({ date: "abc" }), null);
+});
+
+console.log("\n[纪念：排序]");
+t("今天在最前，未来按远近，过去的排最后", () => {
+  const sorted = T.sortMemorials([
+    { id: "p1", title: "过去1", date: keyOf(-100), repeat: "none" },
+    { id: "f2", title: "未来远", date: keyOf(30), repeat: "none" },
+    { id: "t", title: "今天", date: keyOf(0), repeat: "none" },
+    { id: "f1", title: "未来近", date: keyOf(3), repeat: "none" },
+    { id: "p2", title: "过去近", date: keyOf(-5), repeat: "none" },
+  ]);
+  // 注意：sorted 来自 vm 沙箱（另一个 realm），跨 realm 的数组不能用 deepEqual 比，
+  // 会因为原型不同而误报，所以拼成字符串来比
+  assert.equal(sorted.map((x) => x.m.id).join(","), "t,f1,f2,p2,p1");
+});
+t("脏数据不会让排序崩掉", () => {
+  const sorted = T.sortMemorials([{ id: "x", title: "坏", date: "nope" }, { id: "y", title: "好", date: keyOf(1) }]);
+  assert.equal(sorted.length, 1);
+  assert.equal(sorted[0].m.id, "y");
+});
+
+console.log("\n[纪念：图标]");
+t("按名称猜图标", () => {
+  assert.equal(T.emojiOf({ title: "小明生日" }), "🎂");
+  assert.equal(T.emojiOf({ title: "结婚纪念日" }), "💍");
+  assert.equal(T.emojiOf({ title: "在一起" }), "💕");
+  assert.equal(T.emojiOf({ title: "毕业" }), "🎓");
+  assert.equal(T.emojiOf({ title: "随便什么" }), "🎗");
+});
+t("今天的纪念日固定用 🎉", () => {
+  assert.equal(T.emojiOf({ title: "小明生日" }, { kind: "today" }), "🎉");
+});
+
+console.log("\n[纪念：列表渲染]");
+t("空列表显示引导文案", () => {
+  T.setMemorials([]);
+  T.renderMemorials();
+  assert.ok(document.getElementById("memList").innerHTML.includes("mem-empty"));
+  assert.ok(document.getElementById("memSub").textContent.includes("重要的日子"));
+});
+t("列表条数与内容正确", () => {
+  T.setMemorials([
+    { id: "a", title: "在一起", date: keyOf(0), repeat: "year", note: "第一次见面" },
+    { id: "b", title: "毕业", date: keyOf(-20), repeat: "none", note: "" },
+  ]);
+  T.renderMemorials();
+  const html = document.getElementById("memList").innerHTML;
+  assert.equal((html.match(/class="mem-item/g) || []).length, 2);
+  assert.ok(html.includes("在一起"));
+  assert.ok(html.includes("就是今天"));
+  assert.ok(html.includes("第一次见面"));
+  assert.ok(html.includes("已过 20 天"));
+  assert.ok(html.includes("每年重复"));
+  assert.ok(html.includes("只此一次"));
+});
+t("标题做了 HTML 转义", () => {
+  T.setMemorials([{ id: "x", title: '<script>alert(1)</script>', date: keyOf(3), repeat: "none" }]);
+  T.renderMemorials();
+  const html = document.getElementById("memList").innerHTML;
+  assert.equal(html.includes("<script>alert"), false);
+  assert.ok(html.includes("&lt;script&gt;"));
+});
+t("近期（7 天内）会标上 soon 样式", () => {
+  T.setMemorials([{ id: "s", title: "快到了", date: keyOf(3), repeat: "none" }]);
+  T.renderMemorials();
+  assert.ok(document.getElementById("memList").innerHTML.includes("mem-item soon"));
+});
+
+console.log("\n[纪念：主界面提示条]");
+t("今天有纪念日 → 显示提示条", () => {
+  T.setMemorials([{ id: "a", title: "在一起", date: keyOf(0), repeat: "year" }]);
+  T.renderMemBanner();
+  assert.equal(document.getElementById("memBanner").classList.contains("hidden"), false);
+  assert.ok(document.getElementById("memBannerMain").textContent.includes("今天是"));
+  assert.ok(document.getElementById("memBannerMain").textContent.includes("在一起"));
+});
+t("7 天内有纪念日 → 显示倒计时", () => {
+  T.setMemorials([{ id: "b", title: "生日", date: keyOf(5), repeat: "none" }]);
+  T.renderMemBanner();
+  assert.equal(document.getElementById("memBanner").classList.contains("hidden"), false);
+  assert.ok(document.getElementById("memBannerMain").textContent.includes("还有 5 天"));
+});
+t("都还很远 → 隐藏提示条", () => {
+  T.setMemorials([{ id: "c", title: "很久以后", date: keyOf(200), repeat: "none" }]);
+  T.renderMemBanner();
+  assert.equal(document.getElementById("memBanner").classList.contains("hidden"), true);
+});
+t("没有纪念日 → 隐藏提示条", () => {
+  T.setMemorials([]);
+  T.renderMemBanner();
+  assert.equal(document.getElementById("memBanner").classList.contains("hidden"), true);
 });
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);

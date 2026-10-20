@@ -313,6 +313,108 @@ await t("不存在的待办 404", async () => {
   assert.equal(r.status, 404);
 });
 
+console.log("\n[纪念：增删改查]");
+let memId = "";
+await t("空列表", async () => {
+  const r = await call("GET", "/api/memorials");
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.json.memorials, []);
+});
+
+await t("新增纪念日（默认每年重复）", async () => {
+  const r = await call("POST", "/api/memorials", {
+    body: { title: "在一起", date: "2023-05-20" },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.json.memorial.title, "在一起");
+  assert.equal(r.json.memorial.date, "2023-05-20");
+  assert.equal(r.json.memorial.repeat, "year");
+  assert.equal(r.json.memorial.note, "");
+  assert.ok(r.json.memorial.id, "缺少 id");
+  memId = r.json.memorial.id;
+  assert.equal(r.json.memorials.length, 1);
+});
+
+await t("列表能读回来", async () => {
+  const r = await call("GET", "/api/memorials");
+  assert.equal(r.json.memorials.length, 1);
+  assert.equal(r.json.memorials[0].id, memId);
+});
+
+await t("一次性纪念日 repeat=none", async () => {
+  const r = await call("POST", "/api/memorials", {
+    body: { title: "毕业那天", date: "2024-06-30", repeat: "none", note: "穿学士服" },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.json.memorial.repeat, "none");
+  assert.equal(r.json.memorial.note, "穿学士服");
+  assert.equal(r.json.memorials.length, 2);
+});
+
+await t("非法日期 400", async () => {
+  const r = await call("POST", "/api/memorials", { body: { title: "x", date: "2023-02-30" } });
+  assert.equal(r.status, 400);
+});
+
+await t("空名称 400", async () => {
+  const r = await call("POST", "/api/memorials", { body: { title: "   ", date: "2023-05-20" } });
+  assert.equal(r.status, 400);
+});
+
+await t("缺日期 400", async () => {
+  const r = await call("POST", "/api/memorials", { body: { title: "x" } });
+  assert.equal(r.status, 400);
+});
+
+await t("编辑只改传入的字段", async () => {
+  const r = await call("PATCH", "/api/memorials/" + memId, { body: { title: "在一起的第 1 天" } });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.memorial.title, "在一起的第 1 天");
+  assert.equal(r.json.memorial.date, "2023-05-20"); // 没传就不该变
+  assert.equal(r.json.memorial.repeat, "year");
+  assert.ok(r.json.memorial.updatedAt, "缺少 updatedAt");
+});
+
+await t("编辑不存在的纪念日 404", async () => {
+  const r = await call("PATCH", "/api/memorials/deadbeef", { body: { title: "x" } });
+  assert.equal(r.status, 404);
+});
+
+await t("编辑传空对象 400", async () => {
+  const r = await call("PATCH", "/api/memorials/" + memId, { body: {} });
+  assert.equal(r.status, 400);
+});
+
+await t("删除", async () => {
+  const r = await call("DELETE", "/api/memorials/" + memId);
+  assert.equal(r.status, 200);
+  assert.equal(r.json.ok, true);
+  assert.equal(r.json.memorials.length, 1);
+});
+
+await t("重复删除 404", async () => {
+  const r = await call("DELETE", "/api/memorials/" + memId);
+  assert.equal(r.status, 404);
+});
+
+await t("未登录一律 401", async () => {
+  assert.equal((await call("GET", "/api/memorials", { auth: false })).status, 401);
+  assert.equal(
+    (await call("POST", "/api/memorials", { auth: false, body: { title: "x", date: "2023-01-01" } })).status,
+    401
+  );
+});
+
+console.log("\n[纪念与待办互不干扰]");
+await t("纪念日不影响待办列表与统计", async () => {
+  const todos = await call("GET", "/api/todos");
+  assert.equal(todos.json.todos.length, 1); // 前面测试留下的那条
+  const stats = await call("GET", "/api/stats");
+  assert.equal(stats.json.active.total, 1);
+  const mem = await call("GET", "/api/memorials");
+  assert.equal(mem.json.memorials.length, 1);
+});
+
 console.log("\n[其它接口未被破坏]");
 await t("/api/me 正常", async () => {
   const r = await call("GET", "/api/me");
