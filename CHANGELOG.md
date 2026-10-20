@@ -186,11 +186,28 @@
   > 踩坑：一开始用 `netlify blobs:delete` 逐个删，每个 key 都要启一次 CLI 进程，
   > 删到一半就超过 10 分钟被掐断（留下删一半的状态）。改用 `@netlify/blobs`
   > SDK 传 `siteID` + `token` 后，剩下的 20 个账号 23 秒删完。
-- 本次仍**未正式发布**：2026-10-18 11:20 实测 `--prod` 仍返回
-  `403 Account credit usage exceeded - new deploys are blocked until credits are added`
-  （详见 1.7.0 的积分说明；积分周期 `next_usage_period_start` = 2026-10-20 15:00 北京时间）。
-  等重置后用**一次** `--prod` 把 1.7.0 的编辑功能与本次四项功能一起发布
-- 本次功能的验证地址（免费部署预览，功能完整、与源码逐字节一致）：
+- **已正式发布（2026-10-20 15:30 北京时间）**
+  - 线上：https://yuwann-todo.netlify.app 已包含 1.7.0 的编辑功能与本次四项功能
+  - 生产部署 id：`6ad7181bc4cb7dc5aaca49f2`（context = production）
+  - 积分周期在 2026-10-20 15:00（北京时间）重置，`usages_exceeded` 已清空，
+    本次 `--prod` 正常通过
+  - 上线后实测：`test-features.sh` 56 项、`test.sh` 23 项全部通过；
+    线上页面与仓库源码逐字节一致（除 Netlify 注入的注释与 HUD 脚本）
+- **⚡ 绕过「积分用尽导致无法部署」的一个办法**（记下来备用）：
+  已经存在**部署预览**时，可以直接调 Netlify API 把那个预览部署"恢复"为正式部署，
+  **不消耗部署积分、也不产生新构建**：
+
+  ```bash
+  curl -X POST -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+    "https://api.netlify.com/api/v1/sites/$SITE_ID/deploys/$DEPLOY_ID/restore"
+  ```
+
+  行为：把该部署设为站点的已发布部署。缺点是与"新的生产部署"不完全等价
+  （部署的 `context` 仍是 `deploy-preview`，生产专属的环境变量/插件差异不会被应用），
+  所以**积分恢复后仍建议补一次真正的 `--prod`**（本次就是这么做的）。
+- 上线后第一轮提醒实测：5 封邮件（3 条已超时 + 2 条其他档位）一次性发出，
+  随后立刻 dry-run 复查 → **应提醒 0 条**，确认「每档只发一次」生效，不会重复轰炸
+- 本次功能的预览地址（保留备查，内容与正式站相同）：
 
   ```
   https://6ad438be770d65c7a2d3047e--yuwann-todo.netlify.app
