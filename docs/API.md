@@ -570,6 +570,69 @@ Authorization: Bearer <token>
 
 ---
 
+## 四·补三、年度总结
+
+```
+GET /api/year-review?year=2026&tz=480
+Authorization: Bearer <token>
+```
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `year` | 今年 | 要总结的年份，取值 1900–2100，越界返回 `400` |
+| `tz` | `480` | 客户端时区（比 UTC 快多少分钟），决定「哪天算哪天」 |
+
+**响应 `200`（节选，字段齐全）**
+
+```json
+{
+  "year": 2026,
+  "tzMinutes": 480,
+  "range": { "from": "2026-01-01", "to": "2026-12-31" },
+  "lunar": { "year": 2026, "ganzhi": "丙午", "zodiac": "马", "text": "丙午马年" },
+  "totals": {
+    "completed": 42, "onTime": 36, "late": 6, "unknown": 0,
+    "onTimeRate": 0.857, "activeDays": 61, "perActiveDay": 0.69,
+    "perDay": 0.115, "longestStreak": 7,
+    "historyTotal": 120, "historyCapped": false
+  },
+  "months": [ { "month": 1, "count": 3, "onTime": 3, "late": 0 } ],
+  "best": {
+    "day": { "date": "2026-03-14", "count": 5 },
+    "month": 3, "weekday": 6, "hour": 21
+  },
+  "first": { "date": "2026-01-05", "text": "交周报" },
+  "last": { "date": "2026-11-02", "text": "复习" },
+  "milestones": [ { "n": 100, "date": "2026-07-01", "text": "第 100 件事" } ],
+  "compare": {
+    "prevYear": 2025, "prevCompleted": 30, "completedDelta": 12,
+    "prevOnTimeRate": 0.7, "onTimeRateDelta": 0.157
+  },
+  "pending": { "total": 4, "overdue": 2, "oldestOverdueDays": 15 },
+  "memorials": [
+    { "title": "外婆生日", "solar": "2026-09-25", "lunarText": "八月十五",
+      "years": 86, "calendar": "lunar" }
+  ],
+  "weekday": [0, 1, 2, 3, 4, 5, 6],
+  "hourly": [0, 0, 0, 0, 1, 0]
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `totals.onTimeRate` | 只按**可判断**的记录算（缺 `deadline` 的早期记录计入 `unknown`，不进分母） |
+| `best.month` | **1–12**（不是数组下标） |
+| `best.weekday` / `best.hour` | 0 = 周日 / 0 点；无数据时为 `null` |
+| `milestones` | 累计第 50/100/200/300/500/800/1000/1500/2000/3000 项落在**这一年**的才会列出 |
+| `compare` | 上一年完全没有记录时为 `null` |
+| `pending` | **仅在 `year` = 当前年份时返回**（往年没有"现在欠着"的概念），否则为 `null` |
+| `memorials` | 这一年"过周年"的纪念日（只算 `repeat=year` 的）；农历会换算成本年公历日期 |
+| `totals.historyCapped` | 完成记录已达 3000 条上限，`historyTotal` 只是"现存记录里"的累计 |
+
+**错误响应**：`400 年份应在 1900 到 2100 之间` / `401` / `503`
+
+---
+
 ## 四·补、导出到日历（`.ics`）
 
 ### 4.补.1 导出待办
@@ -1057,6 +1120,7 @@ node test-notify.mjs       # 多级提醒：三档判定、逐档升级、跳档
 node test-api-local.mjs    # 真实 api.js 全部路由（内存版 Blobs，无需 Netlify）
 node test-ui-logic.mjs     # 前端内联脚本：统计页渲染、撤销提示、颜色分档
 node test-lunar.mjs        # 农历换算（与香港天文台 2474 个月首逐月核对）
+node test-year.mjs         # 年度总结（年界、时区切月、同比、里程碑）
 node test-memorial.mjs     # 纪念日校验（日期合法性、闰年、补零、农历）
 node test-heatmap.mjs      # 热力图逻辑
 ```
@@ -1090,6 +1154,7 @@ cd ../todo-deno
 | **纪念** | 增删改查、默认每年重复、非法日期/空名称/缺日期/非法重复方式 400、未登录 401 |
 | **农历纪念** | 换算正确、该年无此闰月 400、小月无三十 400、月份越界 400 |
 | **纪念日导出** | `Content-Type`、全天事件、`RRULE`、`VALARM` 开关、农历逐次展开、行长 ≤ 75 字节 |
+| **年度总结** | 默认今年、指定年份、区间、12/7/24 长度、农历年号、越界 400、未登录 401 |
 | 鉴权安全 | 无 token 401、伪造 token 401、登出后旧 token 失效 401 |
 | 多用户隔离 / 跨设备同步 | A 的数据 B 看不到；两个会话 token 不同、设备间改动互相可见 |
 

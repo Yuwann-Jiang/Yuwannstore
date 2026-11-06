@@ -69,6 +69,7 @@ check_feature "导出待办到日历"        'id="exportBtn"'
 check_feature "纪念视图"              'id="memorialView"'
 check_feature "纪念：农历选择"        'id="memLunarYear"'
 check_feature "纪念：导出到日历"      'id="memExport"'
+check_feature "年度总结"              'id="yearView"'
 check_feature "原生下载分支"          'plus.downloader'
 echo
 

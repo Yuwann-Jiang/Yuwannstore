@@ -133,6 +133,7 @@ const source =
   m[1] +
   "\n;globalThis.__t = { renderStats, renderCols, showToast, hideToast, showUndo," +
   " fmtPct, fmtDuration, classify, levelOf, calcStreak, dateKey, fmtRemain, shorten, escapeHtml," +
+  " renderYearReview, WEEKDAY_CN," +
   " memorialInfo, sortMemorials, renderMemorials, renderMemBanner, emojiOf, parseDateKey," +
   " daysBetween, fmtDateKey, readMemDate, setMemCalendar, buildLunarSelectors," +
   " LUNAR_MONTH_NAMES, LUNAR_DAY_NAMES," +
@@ -533,6 +534,137 @@ t("列表里显示农历文本与对应公历", () => {
   assert.ok(html.includes("农历八月十五"), "缺少农历文本");
   assert.ok(html.includes("公历 " + keyOf(20)), "缺少换算后的公历日期");
   assert.ok(html.includes("第 86 周年"), "缺少周年数");
+});
+
+console.log("\n[年度总结渲染]");
+// 造一份示例数据（结构与会话里的 /api/year-review 返回一致）
+function sampleReview(over) {
+  const base = {
+    year: 2026,
+    range: { from: "2026-01-01", to: "2026-12-31" },
+    lunar: { year: 2026, ganzhi: "丙午", zodiac: "马", text: "丙午马年" },
+    totals: {
+      completed: 42, onTime: 36, late: 6, unknown: 0, onTimeRate: 0.857,
+      activeDays: 61, perActiveDay: 0.69, perDay: 0.115,
+      longestStreak: 7, historyTotal: 120, historyCapped: false,
+    },
+    months: Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1, count: i === 2 ? 12 : i === 6 ? 5 : 0, onTime: 0, late: 0,
+    })),
+    best: { day: { date: "2026-03-14", count: 5 }, month: 3, weekday: 6, hour: 21 },
+    first: { date: "2026-01-05", text: "交周报" },
+    last: { date: "2026-11-02", text: "复习" },
+    milestones: [{ n: 100, date: "2026-07-01", text: "第 100 件事" }],
+    compare: { prevYear: 2025, prevCompleted: 30, completedDelta: 12, prevOnTimeRate: 0.7, onTimeRateDelta: 0.157 },
+    pending: { total: 4, overdue: 2, oldestOverdueDays: 15 },
+    memorials: [
+      { title: "在一起", solar: "2026-05-20", lunarText: "", years: 6, calendar: "solar" },
+      { title: "外婆生日", solar: "2026-09-25", lunarText: "八月十五", years: 86, calendar: "lunar" },
+    ],
+    weekday: [0, 1, 2, 3, 4, 5, 6],
+    hourly: new Array(24).fill(0),
+  };
+  return Object.assign(base, over || {});
+}
+
+t("大数字区显示完成数与准时率", () => {
+  T.renderYearReview(sampleReview());
+  const big = document.getElementById("yearBig").innerHTML;
+  assert.ok(big.includes("42"), "缺少完成数");
+  assert.ok(big.includes("86<small>%</small>"), "准时率四舍五入应为 86%");
+  assert.ok(big.includes("最长连续"), "缺少最长连续");
+  assert.ok(big.includes("有记录"), "缺少有记录天数");
+});
+
+t("副标题带农历年号", () => {
+  T.renderYearReview(sampleReview());
+  assert.ok(document.getElementById("yearSub").textContent.includes("丙午马年"));
+  assert.ok(document.getElementById("yearSub").textContent.includes("42"));
+});
+
+t("月度柱状图 12 根且标出最忙的月", () => {
+  T.renderYearReview(sampleReview());
+  const bars = document.getElementById("yearMonths").innerHTML;
+  assert.equal((bars.match(/class="col"/g) || []).length, 12);
+  assert.ok(document.getElementById("yearMonthSub").textContent.includes("3 月"));
+});
+
+t("年度之最齐全", () => {
+  T.renderYearReview(sampleReview());
+  const facts = document.getElementById("yearBest").innerHTML;
+  assert.ok(facts.includes("2026-03-14"));
+  assert.ok(facts.includes("3 月"));
+  assert.ok(facts.includes("周六"), "缺少最常完成的日子");
+  assert.ok(facts.includes("21:00"), "缺少最爱的时段");
+  assert.ok(facts.includes("交周报"), "缺少第一件事");
+  assert.ok(facts.includes("↑ 12"), "缺少同比增量");
+});
+
+t("比去年少完成时显示下降", () => {
+  T.renderYearReview(sampleReview({
+    compare: { prevYear: 2025, prevCompleted: 60, completedDelta: -18, prevOnTimeRate: 0.8, onTimeRateDelta: -0.05 },
+  }));
+  const facts = document.getElementById("yearBest").innerHTML;
+  assert.ok(facts.includes("↓ 18"));
+  assert.ok(facts.includes("year-delta-down"));
+});
+
+t("里程碑区块按需显示", () => {
+  T.renderYearReview(sampleReview());
+  assert.equal(document.getElementById("yearMilestoneBlock").classList.contains("hidden"), false);
+  assert.ok(document.getElementById("yearMilestones").innerHTML.includes("第 100 项"));
+
+  T.renderYearReview(sampleReview({ milestones: [] }));
+  assert.equal(document.getElementById("yearMilestoneBlock").classList.contains("hidden"), true);
+});
+
+t("周年纪念日：农历的带上农历文本", () => {
+  T.renderYearReview(sampleReview());
+  const html = document.getElementById("yearMems").innerHTML;
+  assert.equal(document.getElementById("yearMemBlock").classList.contains("hidden"), false);
+  assert.ok(html.includes("在一起"));
+  assert.ok(html.includes("农历八月十五"));
+  assert.ok(html.includes("第 86 周年"));
+});
+
+t("没有纪念日时隐藏该区块", () => {
+  T.renderYearReview(sampleReview({ memorials: [] }));
+  assert.equal(document.getElementById("yearMemBlock").classList.contains("hidden"), true);
+});
+
+t("还欠着的：当年才显示", () => {
+  T.renderYearReview(sampleReview());
+  assert.equal(document.getElementById("yearPendingBlock").classList.contains("hidden"), false);
+  assert.ok(document.getElementById("yearPending").innerHTML.includes("15 天"));
+
+  T.renderYearReview(sampleReview({ pending: null }));
+  assert.equal(document.getElementById("yearPendingBlock").classList.contains("hidden"), true);
+});
+
+t("空年份给出提示而不是空白", () => {
+  T.renderYearReview(sampleReview({
+    totals: { completed: 0, onTime: 0, late: 0, unknown: 0, onTimeRate: null, activeDays: 0, perActiveDay: 0, perDay: 0, longestStreak: 0, historyTotal: 0, historyCapped: false },
+    months: Array.from({ length: 12 }, (_, i) => ({ month: i + 1, count: 0, onTime: 0, late: 0 })),
+    best: { day: null, month: null, weekday: null, hour: null },
+    first: null, last: null, milestones: [], compare: null, pending: null, memorials: [],
+  }));
+  assert.ok(document.getElementById("yearBest").innerHTML.includes("还没有完成记录"));
+  assert.ok(document.getElementById("yearMonthSub").textContent.includes("还没有"));
+});
+
+t("记录被截断时在副标题里说明", () => {
+  T.renderYearReview(sampleReview({
+    totals: Object.assign({}, sampleReview().totals, { historyCapped: true }),
+  }));
+  assert.ok(document.getElementById("yearSub").textContent.includes("截断"));
+});
+
+t("副本里含转义，不会注入 HTML", () => {
+  T.renderYearReview(sampleReview({
+    first: { date: "2026-01-05", text: '<img src=x onerror=alert(1)>' },
+  }));
+  const facts = document.getElementById("yearBest").innerHTML;
+  assert.equal(facts.includes("<img"), false);
 });
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);

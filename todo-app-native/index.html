@@ -531,6 +531,58 @@
   .lunar-leap input { width: 15px; height: 15px; accent-color: var(--primary); }
   .lunar-hint { font-size: 12px; color: var(--muted); margin-top: 7px; line-height: 1.5; }
 
+  /* ---------- 年度总结 ---------- */
+  .year-hero {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c6cf0 55%, #a78bfa 100%);
+    color: #fff; border-radius: 16px; padding: 22px 20px; margin-bottom: 14px;
+    box-shadow: 0 8px 24px rgba(79, 70, 229, .22);
+  }
+  .year-hero-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .year-hero-num { font-size: 34px; font-weight: 800; letter-spacing: 1px; line-height: 1.1; }
+  .year-hero-sub { font-size: 13px; opacity: .92; margin-top: 6px; line-height: 1.6; }
+  .year-nav { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+  .year-nav button {
+    background: rgba(255, 255, 255, .18); color: #fff; border: none;
+    width: 32px; height: 32px; border-radius: 9px; font-size: 15px;
+    cursor: pointer; padding: 0; line-height: 1;
+  }
+  .year-nav button:hover:not(:disabled) { background: rgba(255, 255, 255, .32); }
+  .year-nav button:disabled { opacity: .35; cursor: not-allowed; }
+
+  .year-big {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 10px; margin-top: 16px;
+  }
+  .year-big > div { text-align: center; }
+  .year-big .n { font-size: 26px; font-weight: 800; line-height: 1.15; }
+  .year-big .n small { font-size: 13px; font-weight: 600; margin-left: 2px; }
+  .year-big .l { font-size: 11.5px; opacity: .85; margin-top: 3px; }
+
+  .year-block {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 15px; margin-bottom: 12px;
+  }
+  .year-block-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+  .year-block-sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+  .year-facts { display: flex; flex-direction: column; gap: 9px; }
+  .year-fact { display: flex; align-items: baseline; gap: 8px; font-size: 13.5px; }
+  .year-fact .k { color: var(--muted); flex: 0 0 auto; }
+  .year-fact .v { font-weight: 600; word-break: break-word; }
+  .year-fact .v .dim { font-weight: 400; color: var(--muted); }
+
+  .year-mem { display: flex; flex-direction: column; gap: 8px; }
+  .year-mem-item {
+    display: flex; align-items: center; gap: 10px; font-size: 13.5px;
+    padding: 9px 11px; background: #f7f8fc; border-radius: 9px;
+  }
+  .year-mem-item .t { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+  .year-mem-item .d { color: var(--muted); font-size: 12.5px; flex: 0 0 auto; }
+
+  .year-empty { text-align: center; color: var(--muted); font-size: 13.5px; padding: 26px 0; }
+  .year-delta-up { color: var(--green); }
+  .year-delta-down { color: var(--red); }
+
   /* 主界面上的「今天/近期有纪念日」提示条 */
   .mem-banner {
     display: flex; align-items: center; gap: 12px;
@@ -674,6 +726,7 @@
 
     <!-- 快捷操作：纪念 / 统计 / 导出到日历 -->
     <div class="quick-actions">
+      <button class="qa-btn" id="yearBtn" type="button">📖 年度总结</button>
       <button class="qa-btn" id="memBtn" type="button">🎗 纪念</button>
       <button class="qa-btn" id="statsBtn" type="button">📊 统计</button>
       <button class="qa-btn" id="exportBtn" type="button">📅 导出日历</button>
@@ -757,6 +810,64 @@
       <div class="stats-block-title">当前待办的时间分布</div>
       <div class="stats-block-sub">按剩余时间分档，帮你判断现在该先做哪些</div>
       <div class="chips" id="activeChips"></div>
+    </div>
+  </section>
+
+  <!-- ================= 年度总结 ================= -->
+  <section id="yearView" class="hidden">
+    <div class="year-hero">
+      <div class="year-hero-top">
+        <div>
+          <div class="year-hero-num" id="yearNum">2026</div>
+          <div class="year-hero-sub" id="yearSub">正在统计…</div>
+        </div>
+        <div class="year-nav">
+          <button id="yearPrev" type="button" title="上一年">‹</button>
+          <button id="yearNext" type="button" title="下一年">›</button>
+        </div>
+      </div>
+      <div class="year-big" id="yearBig"></div>
+    </div>
+
+    <div class="year-block">
+      <div class="year-block-title">每个月的完成量</div>
+      <div class="year-block-sub" id="yearMonthSub">-</div>
+      <div class="cols" id="yearMonths"></div>
+    </div>
+
+    <div class="year-block">
+      <div class="year-block-title">这一年的「最」</div>
+      <div class="year-block-sub">从完成记录里挑出来的</div>
+      <div class="year-facts" id="yearBest"></div>
+    </div>
+
+    <div class="year-block" id="yearMilestoneBlock">
+      <div class="year-block-title">里程碑</div>
+      <div class="year-block-sub">累计完成数跨过整数关口的那一天</div>
+      <div class="year-facts" id="yearMilestones"></div>
+    </div>
+
+    <div class="year-block" id="yearMemBlock">
+      <div class="year-block-title">今年过周年的纪念日</div>
+      <div class="year-block-sub">来自「纪念」里的每年重复项</div>
+      <div class="year-mem" id="yearMems"></div>
+    </div>
+
+    <div class="year-block" id="yearPendingBlock">
+      <div class="year-block-title">还欠着的</div>
+      <div class="year-block-sub">当前列表里还没完成的</div>
+      <div class="year-facts" id="yearPending"></div>
+    </div>
+
+    <div class="year-block">
+      <div class="year-block-sub" style="margin:0 0 10px;">
+        小提示：年度总结按你所在时区计算，数据来自完成记录（最多保留最近 3000 条）。
+      </div>
+      <div style="display:flex;gap:9px;flex-wrap:wrap;">
+        <button class="btn-ghost" id="yearCopy" type="button">📋 复制成文字</button>
+        <button class="btn-ghost" id="yearBack" type="button">← 返回待办</button>
+      </div>
+      <div class="msg" id="yearMsg" style="margin-top:10px;"></div>
     </div>
   </section>
 
@@ -944,6 +1055,7 @@
     $("authView").classList.add("hidden");
     $("appView").classList.remove("hidden");
     $("statsView").classList.add("hidden");
+    $("yearView").classList.add("hidden");
     $("memorialView").classList.add("hidden");
     $("currentUser").textContent = username;
     $("avatar").textContent = username.slice(0, 1).toUpperCase();
@@ -1529,8 +1641,10 @@
     $("adminBtn").classList.add("hidden");
     $("adminView").classList.add("hidden");
     $("statsView").classList.add("hidden");
+    $("yearView").classList.add("hidden");
     $("memorialView").classList.add("hidden");
     $("memBanner").classList.add("hidden");
+    yearReview = null;
     showAuth();
   }
 
@@ -2561,6 +2675,254 @@
     setMemMsg((data && data.error) || "删除失败，请稍后重试", "error");
   }
 
+  // =====================================================================
+  // 年度总结
+  //
+  // 数据由 GET /api/year-review 算好（见 lib/year.js），前端只负责排版。
+  // 为什么不在前端算：口径要跟统计页一致（本地时区切月、准时率只算可判断的），
+  // 放在一处才不会两边各算一套。
+  // =====================================================================
+  let reviewYear = new Date().getFullYear();
+  let yearReview = null;
+
+  function openYearReview() {
+    $("appView").classList.add("hidden");
+    $("yearView").classList.remove("hidden");
+    reviewYear = new Date().getFullYear();
+    loadYearReview();
+  }
+
+  function closeYearReview() {
+    $("yearView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+  }
+
+  async function loadYearReview() {
+    $("yearNum").textContent = reviewYear;
+    $("yearSub").textContent = "正在统计…";
+    $("yearBig").innerHTML = "";
+
+    const tz = -new Date().getTimezoneOffset();
+    const { status, data } = await api("/api/year-review?year=" + reviewYear + "&tz=" + tz);
+    if (status === 200) {
+      yearReview = data;
+      renderYearReview(data);
+      return;
+    }
+    $("yearSub").textContent = (data && data.error) || "年度总结加载失败，请稍后重试";
+  }
+
+  function setYearMsg(text, kind) {
+    const el = $("yearMsg");
+    el.textContent = text || "";
+    el.className = "msg" + (kind ? " " + kind : "");
+  }
+
+  const WEEKDAY_CN = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+  function renderYearReview(r) {
+    const t = r.totals;
+    const thisYear = new Date().getFullYear();
+
+    $("yearNum").textContent = r.year + (r.year === thisYear ? "（今年）" : "");
+    $("yearPrev").disabled = r.year <= 1900;
+    $("yearNext").disabled = r.year >= thisYear;
+
+    $("yearSub").textContent = r.lunar
+      ? r.lunar.text + " · " + (t.completed
+          ? "这一年你完成了 " + t.completed + " 件事"
+          : "这一年还没有完成记录")
+      : "这一年还没有完成记录";
+
+    // ---------------- 大数字 ----------------
+    $("yearBig").innerHTML = [
+      { n: t.completed, l: "完成" },
+      { n: t.onTimeRate === null ? "—" : Math.round(t.onTimeRate * 100) + "<small>%</small>", l: "准时率" },
+      { n: t.longestStreak, l: "最长连续<small>天</small>" },
+      { n: t.activeDays, l: "有记录<small>天</small>" },
+    ]
+      .map(function (x) {
+        return '<div><div class="n">' + x.n + '</div><div class="l">' + x.l + "</div></div>";
+      })
+      .join("");
+    // 说明：n 里可能含 <small>，所以统一用 innerHTML 拼
+
+    // ---------------- 月度柱状图 ----------------
+    const monthMax = Math.max(0, ...r.months.map((m) => m.count));
+    $("yearMonthSub").textContent = monthMax
+      ? "最多的是 " + r.months[r.best.month - 1].month + " 月，完成 " + monthMax + " 项"
+      : "这一年还没有完成记录";
+    renderCols(
+      $("yearMonths"),
+      r.months.map(function (m) {
+        return {
+          v: m.count,
+          tip: m.month + " 月：" + m.count + " 项" + (m.late ? "（超时 " + m.late + "）" : ""),
+          label: m.month % 2 === 1 ? String(m.month) : "",
+          cls: m.count ? "has" : "",
+        };
+      }),
+      { height: 64 }
+    );
+
+    // ---------------- 年度之最 ----------------
+    const facts = [];
+    if (r.best.day) {
+      facts.push(["最勤快的一天", r.best.day.date + "　完成 " + r.best.day.count + " 项"]);
+    }
+    if (r.best.month !== null) {
+      facts.push(["最忙的月份", r.best.month + " 月"]);
+    }
+    if (r.best.weekday !== null) {
+      facts.push(["最常完成的日子", WEEKDAY_CN[r.best.weekday]]);
+    }
+    if (r.best.hour !== null) {
+      facts.push(["最爱的时段", r.best.hour + ":00 - " + (r.best.hour + 1) + ":00"]);
+    }
+    if (r.first) {
+      // 待办文本来自用户输入，必须转义
+      facts.push(["第一件事", escapeHtml(r.first.text) + '　<span class="dim">' + escapeHtml(r.first.date) + "</span>"]);
+    }
+    if (r.last && r.last.date !== (r.first && r.first.date)) {
+      facts.push(["最后一件事", escapeHtml(r.last.text) + '　<span class="dim">' + escapeHtml(r.last.date) + "</span>"]);
+    }
+    if (t.perActiveDay) {
+      facts.push(["平均每个有记录的日子", (Math.round(t.perActiveDay * 10) / 10) + " 项"]);
+    }
+    if (r.compare) {
+      const d = r.compare.completedDelta;
+      const cls = d > 0 ? "year-delta-up" : d < 0 ? "year-delta-down" : "";
+      const arrow = d > 0 ? "↑ " + d : d < 0 ? "↓ " + Math.abs(d) : "持平";
+      facts.push([
+        "比 " + r.compare.prevYear + " 年",
+        '<span class="' + cls + '">' + arrow + "</span>" +
+          '<span class="dim">　（去年完成 ' + r.compare.prevCompleted + " 项）</span>",
+      ]);
+      if (r.compare.onTimeRateDelta !== null) {
+        const rd = Math.round(r.compare.onTimeRateDelta * 100);
+        facts.push([
+          "准时率变化",
+          (rd >= 0 ? "+" : "") + rd + " 个百分点",
+        ]);
+      }
+    }
+
+    $("yearBest").innerHTML = facts.length
+      ? facts
+          .map(function (f) {
+            return '<div class="year-fact"><span class="k">' + f[0] + '</span><span class="v">' + f[1] + "</span></div>";
+          })
+          .join("")
+      : '<div class="year-empty">这一年还没有完成记录，明年见。</div>';
+
+    // ---------------- 里程碑 ----------------
+    if (r.milestones && r.milestones.length) {
+      $("yearMilestoneBlock").classList.remove("hidden");
+      $("yearMilestones").innerHTML = r.milestones
+        .map(function (m) {
+          return (
+            '<div class="year-fact"><span class="k">第 ' + m.n + " 项</span>" +
+            '<span class="v">' + escapeHtml(m.text) + '　<span class="dim">' + m.date + "</span></span></div>"
+          );
+        })
+        .join("");
+    } else {
+      $("yearMilestoneBlock").classList.add("hidden");
+    }
+
+    // ---------------- 周年纪念日 ----------------
+    if (r.memorials && r.memorials.length) {
+      $("yearMemBlock").classList.remove("hidden");
+      $("yearMems").innerHTML = r.memorials
+        .map(function (m) {
+          const extra = m.lunarText ? "农历" + m.lunarText + " · " : "";
+          return (
+            '<div class="year-mem-item"><span class="t">' + escapeHtml(m.title) + "</span>" +
+            '<span class="d">' + extra + m.solar.slice(5) + " · 第 " + m.years + " 周年</span></div>"
+          );
+        })
+        .join("");
+    } else {
+      $("yearMemBlock").classList.add("hidden");
+    }
+
+    // ---------------- 还欠着 ----------------
+    if (r.pending) {
+      $("yearPendingBlock").classList.remove("hidden");
+      const parts = [];
+      parts.push(["还没完成", r.pending.total + " 条"]);
+      if (r.pending.overdue) {
+        parts.push(["其中已超时", r.pending.overdue + " 条"]);
+        parts.push(["超时最久", r.pending.oldestOverdueDays + " 天"]);
+      } else if (r.pending.total) {
+        parts.push(["超时的", "一条都没有 👍"]);
+      }
+      $("yearPending").innerHTML = parts
+        .map(function (f) {
+          return '<div class="year-fact"><span class="k">' + f[0] + '</span><span class="v">' + f[1] + "</span></div>";
+        })
+        .join("");
+    } else {
+      $("yearPendingBlock").classList.add("hidden");
+    }
+
+    if (t.historyCapped) {
+      $("yearSub").textContent += "（完成记录已达上限，较早的数据已按上限截断）";
+    }
+  }
+
+  // 把年度总结复制成纯文字，方便发给别人
+  async function copyYearReview() {
+    if (!yearReview) return;
+    const r = yearReview;
+    const t = r.totals;
+    const lines = [];
+    lines.push("【" + r.year + " 年度总结】" + (r.lunar ? " · " + r.lunar.text : ""));
+    lines.push("完成 " + t.completed + " 项" +
+      (t.onTimeRate !== null ? "，准时率 " + Math.round(t.onTimeRate * 100) + "%" : "") +
+      "，最长连续 " + t.longestStreak + " 天，有记录 " + t.activeDays + " 天");
+    if (r.best.day) lines.push("最勤快的一天：" + r.best.day.date + "（" + r.best.day.count + " 项）");
+    if (r.best.month !== null) lines.push("最忙的月份：" + r.best.month + " 月");
+    if (r.best.weekday !== null) lines.push("最常完成：" + WEEKDAY_CN[r.best.weekday]);
+    if (r.best.hour !== null) lines.push("最爱的时段：" + r.best.hour + " 点");
+    if (r.first) lines.push("第一件事：" + r.first.text);
+    if (r.compare) {
+      const d = r.compare.completedDelta;
+      lines.push("比 " + r.compare.prevYear + " 年" + (d > 0 ? "多完成 " + d : d < 0 ? "少完成 " + Math.abs(d) : "持平") + " 项");
+    }
+    if (r.memorials.length) {
+      lines.push("今年过周年：" + r.memorials.map(function (m) { return m.title + "（第 " + m.years + " 周年）"; }).join("、"));
+    }
+    const text = lines.join("\n");
+
+    let done = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        done = true;
+      }
+    } catch (e) {
+      done = false;
+    }
+    if (!done) {
+      // 兜底：部分 WebView / 非 https 环境没有 clipboard API
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        done = document.execCommand("copy");
+        ta.remove();
+      } catch (e) {
+        done = false;
+      }
+    }
+    setYearMsg(done ? "已复制，粘贴到微信就能发" : "复制失败，可以手动截图分享", done ? "ok" : "error");
+    setTimeout(function () { setYearMsg(""); }, 2600);
+  }
+
   // ---------------------------------------------------------------- 事件
   $("tabLogin").addEventListener("click", () => {
     authMode = "login";
@@ -2713,6 +3075,20 @@
   $("adminBack").addEventListener("click", closeAdmin);
 
   // ---------------- 纪念 ----------------
+  // ---------------- 年度总结 ----------------
+  $("yearBtn").addEventListener("click", openYearReview);
+  $("yearBack").addEventListener("click", closeYearReview);
+  $("yearCopy").addEventListener("click", copyYearReview);
+  $("yearPrev").addEventListener("click", function () {
+    reviewYear = reviewYear - 1;
+    loadYearReview();
+  });
+  $("yearNext").addEventListener("click", function () {
+    if (reviewYear >= new Date().getFullYear()) return;
+    reviewYear = reviewYear + 1;
+    loadYearReview();
+  });
+
   $("memBtn").addEventListener("click", openMemorial);
   $("memBack").addEventListener("click", closeMemorial);
   $("memExport").addEventListener("click", exportMemorials);

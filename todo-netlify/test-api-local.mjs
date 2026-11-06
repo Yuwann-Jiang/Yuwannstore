@@ -313,6 +313,44 @@ await t("不存在的待办 404", async () => {
   assert.equal(r.status, 404);
 });
 
+console.log("\n[年度总结]");
+await t("默认总结今年，结构完整", async () => {
+  const r = await call("GET", "/api/year-review");
+  assert.equal(r.status, 200);
+  const y = r.json;
+  assert.equal(y.year, new Date().getFullYear());
+  assert.equal(y.months.length, 12);
+  assert.equal(y.weekday.length, 7);
+  assert.equal(y.hourly.length, 24);
+  assert.ok(y.totals && typeof y.totals.completed === "number");
+  assert.ok(y.range.from.endsWith("-01-01"));
+  assert.ok(y.range.to.endsWith("-12-31"));
+  assert.ok(y.lunar && y.lunar.text, "缺少农历年号");
+});
+
+await t("能指定年份", async () => {
+  const r = await call("GET", "/api/year-review?year=2020");
+  assert.equal(r.status, 200);
+  assert.equal(r.json.year, 2020);
+});
+
+await t("年份越界 400", async () => {
+  assert.equal((await call("GET", "/api/year-review?year=1899")).status, 400);
+  assert.equal((await call("GET", "/api/year-review?year=2101")).status, 400);
+  assert.equal((await call("GET", "/api/year-review?year=abc")).status, 400);
+});
+
+await t("完成的待办会出现在年度总结里", async () => {
+  const before = await call("GET", "/api/year-review");
+  // 前面测试已经完成过待办，所以今年至少有 1 笔
+  assert.ok(before.json.totals.completed >= 1, "今年完成数应 ≥ 1");
+  assert.ok(before.json.totals.historyTotal >= 1);
+});
+
+await t("未登录 401", async () => {
+  assert.equal((await call("GET", "/api/year-review", { auth: false })).status, 401);
+});
+
 console.log("\n[纪念：增删改查]");
 let memId = "";
 await t("空列表", async () => {

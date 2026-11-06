@@ -209,6 +209,20 @@ print(sum(1 for line in s.split(b'\r\n') if len(line) > 75))" <<< "$MIC")" "0"
 chk "alarms=0 去掉提醒" "$(body "$B/api/memorials.ics?alarms=0" -H "$AUTH" | grep -c 'VALARM')" "0"
 chk "未登录 401" "$(code "$B/api/memorials.ics")" "401"
 
+echo "=== 13. 年度总结 ==="
+YR=$(body "$B/api/year-review" -H "$AUTH")
+chk "默认总结今年" "$(echo "$YR" | jp "d['year'] == __import__('datetime').date.today().year")" "True"
+chk "月度 12 项" "$(echo "$YR" | jp "len(d['months'])")" "12"
+chk "星期 7 项" "$(echo "$YR" | jp "len(d['weekday'])")" "7"
+chk "时段 24 项" "$(echo "$YR" | jp "len(d['hourly'])")" "24"
+chk "有农历年号" "$([ -n "$(echo "$YR" | jp "d['lunar']['text']")" ] && echo yes || echo no)" "yes"
+chk "区间是整年" "$(echo "$YR" | jp "d['range']['from'][-5:] + '~' + d['range']['to'][-5:]")" "01-01~12-31"
+chk "能指定年份" "$(body "$B/api/year-review?year=2020" -H "$AUTH" | jp "d['year']")" "2020"
+chk "年份越界 400" "$(code "$B/api/year-review?year=1899" -H "$AUTH")" "400"
+chk "非数字年份 400" "$(code "$B/api/year-review?year=abc" -H "$AUTH")" "400"
+chk "未登录 401" "$(code "$B/api/year-review")" "401"
+chk "完成数是非负整数" "$(echo "$YR" | jp "isinstance(d['totals']['completed'], int) and d['totals']['completed'] >= 0")" "True"
+
 echo ""
 echo "===== 结果: 通过 $pass 项, 失败 $fail 项 ====="
 if [ "$fail" -eq 0 ]; then echo "全部通过"; else echo "存在失败项"; fi

@@ -7,6 +7,7 @@ import { getStore } from "@netlify/blobs";
 import { webcrypto as crypto } from "node:crypto";
 import { createMailer, runNotify } from "../../lib/notify.js";
 import { computeStats } from "../../lib/stats.js";
+import { computeYearReview } from "../../lib/year.js";
 import { buildCalendar, buildMemorialCalendar } from "../../lib/ics.js";
 import { validateMemorial, MAX_MEMORIALS } from "../../lib/memorial.js";
 import { lunar2solar, lunarInYear, solar2lunar, formatLunar, ganzhiOf, zodiacOf } from "../../lib/lunar.js";
@@ -869,6 +870,39 @@ async function handle(req) {
           url.searchParams.get("tz") === null
             ? undefined
             : Number(url.searchParams.get("tz")),
+      })
+    );
+  }
+
+  // 年度总结：某一年的完成情况、年度之最、同比、周年纪念日
+  // 参数：year=要总结的年份（默认今年）；tz=客户端时区（默认 480）
+  if (path === "/api/year-review" && req.method === "GET") {
+    const yearParam = url.searchParams.get("year");
+    let year;
+    if (yearParam !== null) {
+      year = Number(yearParam);
+      if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+        return json({ error: "年份应在 1900 到 2100 之间" }, 400);
+      }
+    }
+
+    const tr = await getTodos(currentUser);
+    if (!tr.ok) return STORAGE_DOWN();
+    const cr = await storeGet(completionsKey(currentUser));
+    if (!cr.ok) return STORAGE_DOWN();
+    const mr = await getMemorials(currentUser);
+    if (!mr.ok) return STORAGE_DOWN();
+
+    return json(
+      computeYearReview({
+        completions: Array.isArray(cr.value) ? cr.value : [],
+        todos: tr.todos,
+        memorials: mr.list,
+        year,
+        now: Date.now(),
+        tzMinutes:
+          url.searchParams.get("tz") === null ? undefined : Number(url.searchParams.get("tz")),
+        limit: MAX_COMPLETIONS,
       })
     );
   }
