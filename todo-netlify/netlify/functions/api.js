@@ -10,6 +10,7 @@ import { computeStats } from "../../lib/stats.js";
 import { computeYearReview } from "../../lib/year.js";
 import { buildCalendar, buildMemorialCalendar } from "../../lib/ics.js";
 import { validateMemorial, MAX_MEMORIALS } from "../../lib/memorial.js";
+import { settleAutoTodos, makeCompletion, appendCompletions, MAX_COMPLETIONS } from "../../lib/auto.js";
 import { lunar2solar, lunarInYear, solar2lunar, formatLunar, ganzhiOf, zodiacOf } from "../../lib/lunar.js";
 
 const PBKDF2_ITERATIONS = 100000;
@@ -140,8 +141,8 @@ const sessionKey = (token) => `session:${token}`;
 const completionsKey = (username) => `completions:${username}`;
 const memorialsKey = (username) => `memorials:${username}`;
 
-// 完成记录最多保留条数，防止无限增长
-const MAX_COMPLETIONS = 3000;
+// 完成记录最多保留条数（定义在 lib/auto.js，这里只是转出给别处引用）
+const MAX_COMPLETIONS_CAP = MAX_COMPLETIONS;
 
 // 纪念日列表（上限见 lib/memorial.js 的 MAX_MEMORIALS）
 async function getMemorials(username) {
@@ -262,25 +263,43 @@ async function getTodos(username) {
 // 说明：点「已完成」会把待办删除，因此在删除前先落一条历史记录。
 // 返回写入的记录（含唯一 id），供"撤销完成"时精确回滚；失败返回 null。
 // ---------------------------------------------------------------------------
-async function recordCompletion(username, todo) {
+async function recordCompletion(username, todo, at = Date.now()) {
   const r = await storeGet(completionsKey(username));
-  if (!r.ok) return null;
+  if (!r.ok) return { ok: false, record: null };
 
-  const list = Array.isArray(r.value) ? r.value : [];
-  const now = Date.now();
-  const record = {
-    id: randomToken().slice(0, 12),
-    text: String(todo.text ?? "").slice(0, 200),
-    at: now,
-    deadline: Number.isFinite(todo.deadline) ? todo.deadline : null,
-    onTime: Number.isFinite(todo.deadline) ? now <= todo.deadline : null,
-  };
-  list.push(record);
+  const record = makeCompletion(todo, at, randomToken().slice(0, 12));
+  const next = appendCompletions(r.value, [record], MAX_COMPLETIONS_CAP);
+  const w = await storeSet(completionsKey(username), next);
+  if (!w.ok) return { ok: false, record: null };
+  return { ok: true, record };
+}
 
-  // 只保留最近 MAX_COMPLETIONS 条，避免无限增长
-  const trimmed = list.length > MAX_COMPLETIONS ? list.slice(-MAX_COMPLETIONS) : list;
-  const w = await storeSet(completionsKey(username), trimmed);
-  return w.ok ? record : null;
+// ---------------------------------------------------------------------------
+// 倒计时待办的"惰性结算"
+//
+// auto:true 的待办到期后应自动算完成（每 15 分钟的定时任务也会兜底扫一遍，
+// 见 lib/notify.js）。这里在读列表时顺手结算，让用户打开 App 立刻看到正确状态。
+//
+// 注意：这让 GET /api/todos 带上了写副作用 —— 是刻意的选择，
+// 换来"打开就准"的体验；重复调用是幂等的（结算过的已经不在列表里了）。
+// ---------------------------------------------------------------------------
+async function settleAutoFor(username, now = Date.now()) {
+  const tr = await getTodos(username);
+  if (!tr.ok) return { ok: false };
+  const { kept, completed } = settleAutoTodos(tr.todos, now);
+  if (!completed.length) return { ok: true, todos: tr.todos, settled: 0 };
+
+  const w = await storeSet(todosKey(username), kept);
+  if (!w.ok) return { ok: false };
+
+  const cr = await storeGet(completionsKey(username));
+  if (cr.ok) {
+    const records = completed.map((c) =>
+      makeCompletion(c.todo, c.at, randomToken().slice(0, 12))
+    );
+    await storeSet(completionsKey(username), appendCompletions(cr.value, records, MAX_COMPLETIONS_CAP));
+  }
+  return { ok: true, todos: kept, settled: completed.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -685,10 +704,11 @@ async function handle(req) {
   }
 
   // 待办列表
+  // 先做一次"倒计时待办"的惰性结算：到期的 auto 待办自动算完成
   if (path === "/api/todos" && req.method === "GET") {
-    const r = await getTodos(currentUser);
+    const r = await settleAutoFor(currentUser);
     if (!r.ok) return STORAGE_DOWN();
-    return json({ todos: r.todos });
+    return json({ todos: r.todos, autoSettled: r.settled || 0 });
   }
 
   // 新增待办（同时返回最新完整列表）
@@ -710,6 +730,8 @@ async function handle(req) {
       deadline,
       created: Date.now(),
     };
+    // 倒计时型：到期自动完成，不需要手动点
+    if (body.auto === true) item.auto = true;
     list.push(item);
     const w = await storeSet(todosKey(currentUser), list);
     if (!w.ok) return STORAGE_DOWN();
@@ -730,6 +752,15 @@ async function handle(req) {
     if (!target) return json({ error: "该待办不存在" }, 404);
 
     let changed = false;
+
+    if (body.auto !== undefined) {
+      const auto = body.auto === true;
+      if (auto !== (target.auto === true)) {
+        if (auto) target.auto = true;
+        else delete target.auto;
+        changed = true;
+      }
+    }
 
     if (body.text !== undefined) {
       const text = String(body.text).trim();
@@ -781,7 +812,8 @@ async function handle(req) {
     if (!w.ok) return STORAGE_DOWN();
 
     // 记录历史；即使记录失败也不影响"已完成"本身
-    const record = await recordCompletion(currentUser, target);
+    const rc = await recordCompletion(currentUser, target);
+    const record = rc.ok ? rc.record : null;
     return json({
       ok: true,
       todos: next,

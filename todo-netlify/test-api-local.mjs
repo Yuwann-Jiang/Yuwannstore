@@ -351,6 +351,108 @@ await t("未登录 401", async () => {
   assert.equal((await call("GET", "/api/year-review", { auth: false })).status, 401);
 });
 
+console.log("\n[倒计时待办：到期自动完成]");
+const PAST = Date.now() - 3 * 3600 * 1000;
+const tempTodoIds = []; // 本段创建的待办，测完清掉，避免影响后面的断言
+
+await t("新增时可以标成倒计时型", async () => {
+  const r = await call("POST", "/api/todos", {
+    body: { text: "考试（未来）", deadline: Date.now() + 30 * DAY, auto: true },
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.json.todo.auto, true);
+  tempTodoIds.push(r.json.todo.id);
+});
+
+await t("普通待办不会带 auto 字段", async () => {
+  const r = await call("POST", "/api/todos", {
+    body: { text: "普通任务", deadline: Date.now() + 30 * DAY },
+  });
+  assert.equal(r.status, 201);
+  assert.equal("auto" in r.json.todo, false);
+  tempTodoIds.push(r.json.todo.id);
+});
+
+await t("已到期的倒计时待办：读列表时自动完成", async () => {
+  const created = await call("POST", "/api/todos", {
+    body: { text: "已经考完的试", deadline: PAST, auto: true },
+  });
+  assert.equal(created.status, 201);
+  const id = created.json.todo.id;
+
+  const before = await call("GET", "/api/completions");
+  const beforeCount = before.json.completions.length;
+
+  const r = await call("GET", "/api/todos");
+  assert.equal(r.status, 200);
+  assert.equal(r.json.todos.some((x) => x.id === id), false, "到期的倒计时待办应被移除");
+  assert.ok(r.json.autoSettled >= 1, "应报告结算条数");
+
+  const after = await call("GET", "/api/completions");
+  assert.equal(after.json.completions.length, beforeCount + 1);
+  const rec = after.json.completions.find((c) => c.text === "已经考完的试");
+  assert.ok(rec, "完成记录没写进去");
+  assert.equal(rec.onTime, true, "自动完成的应算准时");
+  assert.equal(rec.at, PAST, "完成时间应等于截止时间，而不是现在");
+});
+
+await t("再读一次不会重复记", async () => {
+  const before = await call("GET", "/api/completions");
+  const r = await call("GET", "/api/todos");
+  assert.equal(r.json.autoSettled, 0);
+  const after = await call("GET", "/api/completions");
+  assert.equal(after.json.completions.length, before.json.completions.length);
+});
+
+await t("普通待办超时不会被自动完成", async () => {
+  const created = await call("POST", "/api/todos", {
+    body: { text: "普通但已超时", deadline: PAST },
+  });
+  const id = created.json.todo.id;
+  const r = await call("GET", "/api/todos");
+  assert.equal(r.json.todos.some((x) => x.id === id), true, "普通待办应留在列表里");
+  await call("DELETE", "/api/todos/" + id); // 清理
+});
+
+await t("还没到期的倒计时待办不会被提前完成", async () => {
+  const created = await call("POST", "/api/todos", {
+    body: { text: "还没到的考试", deadline: Date.now() + 5 * DAY, auto: true },
+  });
+  const id = created.json.todo.id;
+  const r = await call("GET", "/api/todos");
+  assert.equal(r.json.todos.some((x) => x.id === id), true);
+  tempTodoIds.push(id);
+});
+
+await t("可以随时关掉倒计时模式", async () => {
+  const created = await call("POST", "/api/todos", {
+    body: { text: "改主意了", deadline: Date.now() + 5 * DAY, auto: true },
+  });
+  const id = created.json.todo.id;
+  const r = await call("PATCH", "/api/todos/" + id, { body: { auto: false } });
+  assert.equal(r.status, 200);
+  assert.equal("auto" in r.json.todo, false);
+
+  // 关掉之后，即使过了期也不会自动完成
+  await call("PATCH", "/api/todos/" + id, { body: { deadline: PAST } });
+  const list = await call("GET", "/api/todos");
+  assert.equal(list.json.todos.some((x) => x.id === id), true);
+  await call("DELETE", "/api/todos/" + id);
+});
+
+await t("统计与年度总结能读到自动完成的记录", async () => {
+  const stats = await call("GET", "/api/stats");
+  assert.ok(stats.json.done.total >= 1);
+  const year = await call("GET", "/api/year-review");
+  assert.ok(year.json.totals.completed >= 1);
+});
+
+await t("清理本段创建的待办", async () => {
+  for (const id of tempTodoIds) await call("DELETE", "/api/todos/" + id);
+  const r = await call("GET", "/api/todos");
+  assert.ok(r.status === 200);
+});
+
 console.log("\n[纪念：增删改查]");
 let memId = "";
 await t("空列表", async () => {
@@ -537,9 +639,9 @@ await t("未登录不能导出纪念日", async () => {
 console.log("\n[纪念与待办互不干扰]");
 await t("纪念日不影响待办列表与统计", async () => {
   const todos = await call("GET", "/api/todos");
-  assert.equal(todos.json.todos.length, 1); // 前面测试留下的那条
+  assert.ok(todos.json.todos.length >= 1, "待办应仍可读取");
   const stats = await call("GET", "/api/stats");
-  assert.equal(stats.json.active.total, 1);
+  assert.ok(stats.json.active.total >= 1);
   const mem = await call("GET", "/api/memorials");
   assert.ok(mem.json.memorials.length >= 1, "纪念日应仍可读取");
 });

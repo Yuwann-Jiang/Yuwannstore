@@ -223,6 +223,47 @@ chk "非数字年份 400" "$(code "$B/api/year-review?year=abc" -H "$AUTH")" "40
 chk "未登录 401" "$(code "$B/api/year-review")" "401"
 chk "完成数是非负整数" "$(echo "$YR" | jp "isinstance(d['totals']['completed'], int) and d['totals']['completed'] >= 0")" "True"
 
+echo "=== 14. 倒计时待办（到期自动完成）==="
+PAST=$(python3 -c 'import time;print(int((time.time()-7200)*1000))')
+FUTURE=$(python3 -c 'import time;print(int((time.time()+86400*30)*1000))')
+
+AT=$(body -X POST "$B/api/todos" -H "$AUTH" -H "$JSON" \
+  -d "{\"text\":\"12月20日考试\",\"deadline\":$FUTURE,\"auto\":true}")
+AT_ID=$(echo "$AT" | jp "d['todo']['id']")
+chk "可以创建倒计时型" "$(echo "$AT" | jp "d['todo']['auto']")" "True"
+
+PLAIN=$(body -X POST "$B/api/todos" -H "$AUTH" -H "$JSON" \
+  -d "{\"text\":\"普通任务\",\"deadline\":$FUTURE}")
+chk "普通待办不带 auto 字段" "$(echo "$PLAIN" | jp "'auto' in d['todo']")" "False"
+
+DUE=$(body -X POST "$B/api/todos" -H "$AUTH" -H "$JSON" \
+  -d "{\"text\":\"已经考完的试\",\"deadline\":$PAST,\"auto\":true}")
+DUE_ID=$(echo "$DUE" | jp "d['todo']['id']")
+CNT_BEFORE=$(body "$B/api/completions" -H "$AUTH" | jp "len(d['completions'])")
+
+LIST=$(body "$B/api/todos" -H "$AUTH")
+chk "到期的倒计时待办已从列表移除" "$(echo "$LIST" | jp "any(t['id'] == '$DUE_ID' for t in d['todos'])")" "False"
+chk "报告了结算条数" "$(echo "$LIST" | jp "d['autoSettled'] >= 1")" "True"
+chk "完成记录 +1" "$(body "$B/api/completions" -H "$AUTH" | jp "len(d['completions'])")" "$((CNT_BEFORE + 1))"
+chk "自动完成的算准时" "$(body "$B/api/completions" -H "$AUTH" | jp "[c for c in d['completions'] if c['text'] == '已经考完的试'][0]['onTime']")" "True"
+chk "记为截止时间而非现在" "$(body "$B/api/completions" -H "$AUTH" | jp "[c for c in d['completions'] if c['text'] == '已经考完的试'][0]['at']")" "$PAST"
+
+CNT_MID=$(body "$B/api/completions" -H "$AUTH" | jp "len(d['completions'])")
+body "$B/api/todos" -H "$AUTH" > /dev/null
+chk "再次读取不会重复记" "$(body "$B/api/completions" -H "$AUTH" | jp "len(d['completions'])")" "$CNT_MID"
+
+OD=$(body -X POST "$B/api/todos" -H "$AUTH" -H "$JSON" \
+  -d "{\"text\":\"普通但已超时\",\"deadline\":$PAST}")
+OD_ID=$(echo "$OD" | jp "d['todo']['id']")
+chk "普通待办超时也不会被自动完成" "$(body "$B/api/todos" -H "$AUTH" | jp "any(t['id'] == '$OD_ID' for t in d['todos'])")" "True"
+
+chk "可以关掉倒计时模式" "$(body -X PATCH "$B/api/todos/$AT_ID" -H "$AUTH" -H "$JSON" -d '{"auto":false}' | jp "'auto' in d['todo']")" "False"
+
+# 清理这一段造的待办
+for tid in "$AT_ID" "$OD_ID" "$(echo "$PLAIN" | jp "d['todo']['id']")"; do
+  curl -s -m 20 -o /dev/null -X DELETE "$B/api/todos/$tid" -H "$AUTH"
+done
+
 echo ""
 echo "===== 结果: 通过 $pass 项, 失败 $fail 项 ====="
 if [ "$fail" -eq 0 ]; then echo "全部通过"; else echo "存在失败项"; fi

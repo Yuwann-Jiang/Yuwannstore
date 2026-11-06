@@ -70,6 +70,7 @@ check_feature "纪念视图"              'id="memorialView"'
 check_feature "纪念：农历选择"        'id="memLunarYear"'
 check_feature "纪念：导出到日历"      'id="memExport"'
 check_feature "年度总结"              'id="yearView"'
+check_feature "倒计时待办"            'id="autoTodo"'
 check_feature "原生下载分支"          'plus.downloader'
 echo
 

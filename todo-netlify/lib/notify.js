@@ -8,6 +8,7 @@
 
 import tls from "node:tls";
 import net from "node:net";
+import { settleAutoTodos, makeCompletion, appendCompletions, MAX_COMPLETIONS } from "./auto.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -276,15 +277,25 @@ export function renderEmail({ todo, remain, appUrl, stage }) {
   const st = stage || currentStage(remain) || "1d";
   const meta = STAGE_META[st] || STAGE_META["1d"];
 
-  const subject = `${st === "overdue" ? "⚠️" : st === "1d" ? "⏰" : "⏳"} ${meta.title}：${todo.text}`;
+  // 倒计时型待办（auto）不需要"去处理"，所以文案改成"还有多久"，
+  // 并明确说明到期会自动完成，免得用户以为还得点什么。
+  const isAuto = todo.auto === true;
+  const autoTitle =
+    st === "overdue" ? "倒计时已结束" : st === "1d" ? "倒计时还剩不到 1 天" : "倒计时还剩 3 天";
+  const title = isAuto ? autoTitle : meta.title;
+  const advice = isAuto
+    ? (st === "1d" ? "明天就是这个日子，记得安排一下。" : "可以提前准备起来了。")
+    : meta.advice;
+
+  const subject = `${st === "overdue" ? "⚠️" : st === "1d" ? "⏰" : "⏳"} ${title}：${todo.text}`;
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:24px;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
-    <div style="background:${meta.accent};padding:18px 22px;color:#fff;">
+    <div style="background:${isAuto ? "#4f46e5" : meta.accent};padding:18px 22px;color:#fff;">
       <div style="font-size:13px;opacity:.9;">待办提醒</div>
-      <div style="font-size:19px;font-weight:600;margin-top:4px;">${meta.title}</div>
+      <div style="font-size:19px;font-weight:600;margin-top:4px;">${title}</div>
     </div>
     <div style="padding:22px;">
       <div style="font-size:17px;font-weight:600;color:#1f2933;line-height:1.5;word-break:break-word;">${escapeHtml(todo.text)}</div>
@@ -292,7 +303,8 @@ export function renderEmail({ todo, remain, appUrl, stage }) {
         <tr><td style="padding:4px 12px 4px 0;">截止时间</td><td style="color:#1f2933;">${fmtDeadline(todo.deadline)}</td></tr>
         <tr><td style="padding:4px 12px 4px 0;">时间状态</td><td style="color:${meta.accent};font-weight:600;">${fmtRemain(remain)}</td></tr>
       </table>
-      <p style="color:#4b5563;font-size:13.5px;margin-top:14px;line-height:1.6;">${meta.advice}</p>
+      <p style="color:#4b5563;font-size:13.5px;margin-top:14px;line-height:1.6;">${advice}</p>
+      ${isAuto ? '<p style="color:#6b7280;font-size:12.5px;margin-top:6px;line-height:1.6;">这是一条倒计时事项，到时间会自动完成，不需要手动操作。</p>' : ""}
       <div style="margin-top:20px;">
         <a href="${appUrl}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:11px 20px;border-radius:9px;font-size:14px;">打开待办清单</a>
       </div>
@@ -302,10 +314,10 @@ export function renderEmail({ todo, remain, appUrl, stage }) {
 </body></html>`;
 
   const text =
-    `【${meta.title}】${todo.text}\n` +
+    `【${title}】${todo.text}\n` +
     `截止时间：${fmtDeadline(todo.deadline)}\n` +
     `时间状态：${fmtRemain(remain)}\n` +
-    `${meta.advice}\n` +
+    `${advice}\n` +
     `打开待办清单：${appUrl}\n`;
 
   return { subject, html, text, stage: st };
@@ -321,7 +333,7 @@ function escapeHtml(s) {
 // 主流程：遍历所有用户，给「剩余不足 1 天且尚未提醒过」的待办发邮件
 // ---------------------------------------------------------------------------
 export async function runNotify({ store, mailer, from, appUrl, now = Date.now(), dryRun = false }) {
-  const result = { scannedUsers: 0, scannedTodos: 0, due: 0, sent: 0, failed: 0, details: [] };
+  const result = { scannedUsers: 0, scannedTodos: 0, due: 0, sent: 0, failed: 0, autoSettled: 0, details: [] };
 
   if (!mailer) {
     result.error = "邮件服务未配置（缺少 QQ_USER / QQ_AUTH_CODE 环境变量）";
@@ -345,8 +357,7 @@ export async function runNotify({ store, mailer, from, appUrl, now = Date.now(),
     } catch {
       continue;
     }
-    if (!user || !user.email) continue;
-    result.scannedUsers++;
+    if (!user) continue;
 
     const tKey = `todos:${username}`;
     let todos = [];
@@ -355,6 +366,36 @@ export async function runNotify({ store, mailer, from, appUrl, now = Date.now(),
     } catch {
       continue;
     }
+
+    // ---------------- 先结算「倒计时待办」（与有没有绑邮箱无关） ----------------
+    // 这一步是兜底：用户几天不开 App 时，完成记录（热力图/统计/年度总结）
+    // 也要落在正确的那一天，所以不依赖用户访问，定时任务主动结算。
+    const settled = settleAutoTodos(todos, now);
+    if (settled.completed.length) {
+      try {
+        await store.setJSON(tKey, settled.kept);
+        const compKey = `completions:${username}`;
+        const existing = (await store.get(compKey, { type: "json", consistency: "strong" })) || [];
+        const records = settled.completed.map((c) =>
+          makeCompletion(c.todo, c.at, `auto${String(c.at).slice(-6)}${Math.random().toString(36).slice(2, 6)}`)
+        );
+        await store.setJSON(compKey, appendCompletions(existing, records, MAX_COMPLETIONS));
+        todos = settled.kept;
+        result.autoSettled = (result.autoSettled || 0) + settled.completed.length;
+        result.details.push(
+          ...settled.completed.map((c) => ({
+            username, todo: c.todo.text, autoSettled: true, at: new Date(c.at).toISOString(),
+          }))
+        );
+      } catch (e) {
+        result.details.push({ username, autoSettleError: String((e && e.message) || e) });
+        continue;
+      }
+    }
+
+    // 没绑邮箱就只做结算，不发邮件
+    if (!user.email) continue;
+    result.scannedUsers++;
 
     let changed = false;
     for (const todo of todos) {

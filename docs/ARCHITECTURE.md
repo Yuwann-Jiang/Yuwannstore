@@ -61,6 +61,7 @@
 | `lib/memorial.js` | 纪念日的校验与规范化（纯函数） |
 | `lib/lunar.js` | 农历换算（1900–2100 压缩表，与香港天文台数据核对过） |
 | `lib/year.js` | 年度总结计算（年界、时区切月、同比、里程碑、周年） |
+| `lib/auto.js` | 倒计时待办的自动结算（纯函数） |
 | `public/index.html` | 前端单文件应用 |
 
 **关键点：前后端同源。** 前端页面和 API 都由 `yuwann-todo.netlify.app` 提供，
@@ -109,7 +110,7 @@ Key 使用 `类型:用户名` 的形式，Value 是 JSON。
 | Key 格式 | Value 结构 | 说明 |
 |---|---|---|
 | `user:<用户名>` | `{ salt, hash, createdAt, email?, isAdmin? }` | 账号。<br>`salt` 16 字节随机盐（hex）<br>`hash` PBKDF2-SHA256 结果（hex，256 位）<br>`email` 可选，绑定后才有<br>`isAdmin` 可选，管理员为 `true` |
-| `todos:<用户名>` | `[{ id, text, deadline, created, updatedAt?, notifiedStages?, notifiedStage?, notified?, notifiedAt? }]` | 该用户的全部待办数组<br>`deadline` 是毫秒时间戳<br>`notifiedStages` 记录**已发过的提醒档位**（`3d`/`1d`/`overdue`）<br>`notified` 是旧版布尔字段，仅为兼容保留 |
+| `todos:<用户名>` | `[{ id, text, deadline, created, auto?, updatedAt?, notifiedStages?, notifiedStage?, notified?, notifiedAt? }]` | 该用户的全部待办数组<br>`deadline` 是毫秒时间戳<br>`notifiedStages` 记录**已发过的提醒档位**（`3d`/`1d`/`overdue`）<br>`notified` 是旧版布尔字段，仅为兼容保留 |
 | `session:<token>` | `{ username, createdAt }` | 会话。token 是 32 字节随机值（hex）<br>有效期 30 天，**在读取时惰性判断过期** |
 | `memorials:<用户名>` | `[{ id, title, calendar, date, isLeap, repeat, note, created, updatedAt? }]` | 纪念日<br>`date` 是 **`"YYYY-MM-DD"` 字符串**（不是时间戳）<br>`calendar` 为 `solar`（公历）/ `lunar`（农历），农历时 `date` 表示农历年月日<br>`isLeap` 表示原日期是否在闰月<br>上限 500 条 |
 | `completions:<用户名>` | `[{ id, text, at, deadline, onTime }]` | 完成历史，热力图与统计的数据源<br>`id` 12 位随机串，撤销完成时用于精确回滚<br>`at` 完成时间戳<br>`onTime` 是否在截止前完成<br>**上限 3000 条**，超出丢弃最旧的 |
@@ -378,6 +379,32 @@ if (path === "/api/register" && req.method === "POST") { ... }
 > 所以 `window.__NATIVE_APP__` 为真时改走 5+App 的 `plus.downloader`：
 > 带 `Authorization` 头下载到手机「下载」目录，再给一个「打开」按钮交给系统日历 App。
 
+### 倒计时待办（到期自动完成）
+
+有些待办不需要"点完成"，比如「12 月 20 日考试」—— 时间一到就该算完成，
+而不是一直挂着变成"已超时"。带 `auto: true` 的待办即为此类。
+
+**谁来判定"到期了"：两处都做**
+
+| 位置 | 作用 | 代价 |
+|---|---|---|
+| `GET /api/todos`（惰性结算） | 打开 App 的瞬间状态就正确 | 让 GET 带上写副作用（幂等） |
+| 定时任务（每 15 分钟，扫**所有**用户） | 用户不开 App 也不漏记 | 最多 15 分钟延迟 |
+
+只做前者 → 用户不开 App 就永远不结算，热力图/统计/年度总结会缺数据；
+只做后者 → 打开 App 时可能看到"已经过期却还挂着"。
+
+**完成时间记「截止时间」而不是「现在」**：考试是 12-20、定时任务 12-23 才跑到，
+完成记录仍落在 12-20。否则热力图会把这件事记到三天后，
+年度总结的"最忙的一天"也会跟着错。
+
+其它规则：
+
+- 普通待办**永远**不会自动完成（只认 `auto === true`）
+- 倒计时待办**不会收到"已超时"邮件**：结算发生在发信之前，到期即算完成
+- 3 天 / 1 天的提醒照常发，文案换成"倒计时还剩 N 天"并注明会自动完成
+- 结算幂等：结算过的已不在列表里，重复扫描不会重复记
+
 ### 年度总结
 
 主界面「📖 年度总结」进入 `yearView`，数据来自 `GET /api/year-review`（`lib/year.js`）。
@@ -636,6 +663,8 @@ cd todo-netlify && python3 build-native-html.py
 | 农历换算放服务端 | 前端单文件塞不下第二份农历表，两份数据必然走偏 |
 | 农历纪念日导出时逐次展开 | 农历→公历每年都在漂，`RRULE` 重复固定公历日子是错的 |
 | 年度总结的「还欠着」只算当年 | 往年没有"现在欠着"的概念，硬算会误导 |
+| 倒计时待办在「读列表 + 定时任务」两处结算 | 只做一处：要么状态滞后，要么历史漏记 |
+| 自动完成的记录时间取截止时间 | 取"现在"会让热力图与年度总结把它记到错误的日期 |
 
 ---
 

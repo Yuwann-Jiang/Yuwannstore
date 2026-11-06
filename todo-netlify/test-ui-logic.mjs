@@ -59,7 +59,13 @@ function makeEl(id = "") {
     classList: makeClassList(),
     addEventListener() {},
     removeEventListener() {},
-    appendChild(c) { this.children.push(c); return c; },
+    // 真实 DOM 里 appendChild 会反映到父节点的 innerHTML，替身也要这样，
+    // 否则测试读 list.innerHTML 永远是空的
+    appendChild(c) {
+      this.children.push(c);
+      if (c && typeof c._html === "string") this._html += c._html;
+      return c;
+    },
     remove() {},
     setAttribute(k, v) { this[k] = v; },
     getAttribute() { return null; },
@@ -133,10 +139,11 @@ const source =
   m[1] +
   "\n;globalThis.__t = { renderStats, renderCols, showToast, hideToast, showUndo," +
   " fmtPct, fmtDuration, classify, levelOf, calcStreak, dateKey, fmtRemain, shorten, escapeHtml," +
-  " renderYearReview, WEEKDAY_CN," +
+  " renderYearReview, WEEKDAY_CN, render, startEdit, getEditDraft: function () { return editDraft; }," +
   " memorialInfo, sortMemorials, renderMemorials, renderMemBanner, emojiOf, parseDateKey," +
   " daysBetween, fmtDateKey, readMemDate, setMemCalendar, buildLunarSelectors," +
   " LUNAR_MONTH_NAMES, LUNAR_DAY_NAMES," +
+  " setTodos: function (l) { todos = l; }," +
   " setMemorials: function (l) { memorials = l; }, getMemorials: function () { return memorials; } };\n";
 
 vm.createContext(sandbox);
@@ -665,6 +672,55 @@ t("副本里含转义，不会注入 HTML", () => {
   }));
   const facts = document.getElementById("yearBest").innerHTML;
   assert.equal(facts.includes("<img"), false);
+});
+
+console.log("\n[倒计时待办渲染]");
+t("倒计时型显示专属徽标与「立即完成」", () => {
+  T.setTodos([
+    { id: "a1", text: "12月20日考试", deadline: Date.now() + 10 * 86400000, created: 1, auto: true },
+  ]);
+  T.render();
+  const html = document.getElementById("list").innerHTML;
+  assert.ok(html.includes("倒计时"), "缺少倒计时徽标");
+  assert.ok(html.includes("到期自动完成"), "缺少自动完成提示");
+  assert.ok(html.includes("立即完成"), "倒计时型应有「立即完成」");
+  assert.equal(html.includes(">已完成<"), false, "倒计时型不该出现「已完成」按钮");
+});
+t("普通待办仍然显示「已完成」", () => {
+  T.setTodos([
+    { id: "a2", text: "写周报", deadline: Date.now() + 10 * 86400000, created: 1 },
+  ]);
+  T.render();
+  const html = document.getElementById("list").innerHTML;
+  assert.ok(html.includes(">已完成<"));
+  assert.equal(html.includes("倒计时"), false);
+});
+t("编辑倒计时型时勾选框是勾上的", () => {
+  T.setTodos([
+    { id: "a3", text: "考试", deadline: Date.now() + 5 * 86400000, created: 1, auto: true },
+  ]);
+  T.startEdit("a3");
+  const draft = T.getEditDraft();
+  assert.equal(draft.auto, true);
+  assert.equal(draft.original.auto, true);
+  const html = document.getElementById("list").innerHTML;
+  assert.ok(html.includes('id="editAuto"'));
+  assert.ok(html.includes("checked"));
+});
+t("编辑普通待办时勾选框不勾", () => {
+  T.setTodos([{ id: "a4", text: "普通", deadline: Date.now() + 5 * 86400000, created: 1 }]);
+  T.startEdit("a4");
+  assert.equal(T.getEditDraft().auto, false);
+  assert.equal(document.getElementById("list").innerHTML.includes("checked"), false);
+});
+t("倒计时型超时后仍然留在列表（等结算）", () => {
+  T.setTodos([
+    { id: "a5", text: "已到点的考试", deadline: Date.now() - 3600000, created: 1, auto: true },
+  ]);
+  T.render();
+  const html = document.getElementById("list").innerHTML;
+  assert.ok(html.includes("已到点的考试"));
+  assert.ok(html.includes("已超时"), "应显示已超时，但不会自动消失");
 });
 
 console.log(`\n结果：${pass} 通过，${fail} 失败\n`);

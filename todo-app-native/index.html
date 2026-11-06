@@ -348,6 +348,29 @@
   .btn-save:hover:not(:disabled) { background: var(--primary-hover); }
   .btn-save:disabled { opacity: .6; cursor: not-allowed; }
 
+  /* ---------- 添加表单里的小选项 ---------- */
+  .add-opts {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+  }
+  .chk {
+    display: flex; align-items: center; gap: 7px; margin: 0 !important;
+    font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap;
+  }
+  .chk input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+  .add-hint { font-size: 12px; color: var(--muted); }
+
+  /* 倒计时型待办的标记 */
+  .auto-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #eef0ff; color: var(--primary); font-size: 11.5px; font-weight: 600;
+    padding: 2px 7px; border-radius: 6px;
+  }
+  .btn-complete-early {
+    background: #f1f3f8; color: var(--text); font-size: 13px; padding: 8px 12px;
+  }
+  .btn-complete-early:hover { background: #e6e9f2; }
+
   /* ---------- 快捷操作（统计 / 导出日历） ---------- */
   .quick-actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
   .qa-btn {
@@ -700,6 +723,10 @@
           <label for="deadline">截止时间</label>
           <input type="datetime-local" id="deadline" />
         </div>
+      </div>
+      <div class="add-opts">
+        <label class="chk"><input type="checkbox" id="autoTodo" /> ⏳ 只倒计时，到期自动完成</label>
+        <span class="add-hint" id="autoHint">适合「考试」「纪念日」这类到点就算完成的事，不用手动点</span>
       </div>
       <div class="actions">
         <button type="submit" class="btn-add" id="addBtn">＋ 添加待办</button>
@@ -1191,6 +1218,9 @@
             <input type="text" class="edit-text" id="editText" value="${escapeHtml(editDraft.text)}" />
             <label class="edit-label">截止时间</label>
             <input type="datetime-local" class="edit-deadline" id="editDeadline" value="${editDraft.deadline}" />
+            <label class="chk" style="margin-top:8px;">
+              <input type="checkbox" id="editAuto" ${editDraft.auto ? "checked" : ""} /> ⏳ 只倒计时，到期自动完成
+            </label>
             <div class="edit-actions">
               <button class="btn-save" data-action="save" type="button">保存</button>
               <button class="btn-ghost" data-action="cancel" type="button">取消</button>
@@ -1201,9 +1231,12 @@
         return;
       }
 
-      const badge =
-        t.level === "red" ? "<span>!</span>紧急" :
-        t.level === "yellow" ? "<span>•</span>即将" : "<span>✓</span>从容";
+      // 倒计时型（auto）到期会自动完成，所以徽标和按钮都不一样
+      const isAuto = t.auto === true;
+      const badge = isAuto
+        ? '<span>⏳</span>倒计时'
+        : t.level === "red" ? "<span>!</span>紧急"
+        : t.level === "yellow" ? "<span>•</span>即将" : "<span>✓</span>从容";
 
       li.innerHTML = `
         <div class="badge ${t.level}">${badge}</div>
@@ -1212,12 +1245,17 @@
           <div class="meta">
             <span>截止 ${fmtDeadline(t.deadline)}</span>
             <span class="${t.overdue ? "overdue" : ""}">${fmtRemain(t.remain)}</span>
+            ${isAuto ? '<span class="auto-tag">⏳ 到期自动完成</span>' : ""}
             ${t.updatedAt ? '<span title="修改过">✎ 已编辑</span>' : ""}
           </div>
         </div>
         <div class="item-actions">
           <button class="btn-edit" data-action="edit" type="button" title="编辑">✏️</button>
-          <button class="btn-done" data-action="done" type="button">已完成</button>
+          ${
+            isAuto
+              ? '<button class="btn-complete-early" data-action="done" type="button" title="提前结束并记入完成">立即完成</button>'
+              : '<button class="btn-done" data-action="done" type="button">已完成</button>'
+          }
         </div>
       `;
       listEl.appendChild(li);
@@ -1285,10 +1323,12 @@
   window.addEventListener("online", refreshOnlineState);
   window.addEventListener("offline", refreshOnlineState);
 
-  async function addTodo(text, deadline) {
+  async function addTodo(text, deadline, auto) {
+    const payload = { text, deadline };
+    if (auto) payload.auto = true;
     const { status, data } = await api("/api/todos", {
       method: "POST",
-      body: JSON.stringify({ text, deadline }),
+      body: JSON.stringify(payload),
     });
     if (status === 201) { await loadTodos(); return true; }
     setAuthMsg(data.error || "添加失败", "error");
@@ -1395,7 +1435,8 @@
     editDraft = {
       text: t.text,
       deadline: toDatetimeLocal(t.deadline),
-      original: { text: t.text, deadline: t.deadline },
+      auto: t.auto === true,
+      original: { text: t.text, deadline: t.deadline, auto: t.auto === true },
     };
     render();
     // 渲染后聚焦并全选，方便直接改
@@ -1420,6 +1461,8 @@
     const payload = {};
     if (text !== orig.text) payload.text = text;
     if (dlMs !== orig.deadline) payload.deadline = dlMs;
+    const autoNow = editDraft.auto === true;
+    if (autoNow !== (orig.auto === true)) payload.auto = autoNow;
 
     // 什么都没改就直接退出
     if (Object.keys(payload).length === 0) { cancelEdit(); return; }
@@ -1443,6 +1486,8 @@
       render();
       if (payload.deadline !== undefined) {
         setSyncState("已修改截止时间，到期提醒将按新时间重新计算");
+      } else if (payload.auto !== undefined) {
+        setSyncState(payload.auto ? "已改为倒计时：到期自动完成" : "已改为普通待办：需要手动点完成");
       }
     } else {
       if (btn) { btn.disabled = false; btn.textContent = "保存"; }
@@ -3025,10 +3070,17 @@
     if (isNaN(deadline)) { alert("请选择截止时间"); dlEl.focus(); return; }
 
     $("addBtn").disabled = true;
-    const ok = await addTodo(text, deadline);
+    const isAuto = $("autoTodo").checked === true;
+    const ok = await addTodo(text, deadline, isAuto);
     $("addBtn").disabled = false;
 
-    if (ok) { textEl.value = ""; dlEl.value = ""; textEl.focus(); }
+    if (ok) {
+      textEl.value = "";
+      dlEl.value = "";
+      $("autoTodo").checked = false;
+      if (isAuto) setSyncState("已添加倒计时：到 " + new Date(deadline).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) + " 会自动完成");
+      textEl.focus();
+    }
   });
 
   $("sort").addEventListener("change", render);
@@ -3052,6 +3104,7 @@
     if (!editingId) return;
     if (e.target.id === "editText") editDraft.text = e.target.value;
     else if (e.target.id === "editDeadline") editDraft.deadline = e.target.value;
+    else if (e.target.id === "editAuto") editDraft.auto = e.target.checked === true;
   });
 
   // 编辑框里按 Enter 保存、按 Esc 取消
