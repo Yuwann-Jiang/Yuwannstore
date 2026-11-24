@@ -1,0 +1,14 @@
+# 方案 A：官方 Werewolf-Arena-Evaluator（1 个参赛者 + Gemini 模拟玩家）
+# 需要 GEMINI_API_KEY（免费额度够 8 局）：https://aistudio.google.com/apikey
+
+[green_agent]
+agentbeats_id = "019bbf50-8190-7972-b436-487fd7808aaf"
+env = { GEMINI_API_KEY = "${GEMINI_API_KEY}", LOG_LEVEL = "INFO" }
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"   # 我们的 purple agent
+name = "participant"
+env = { LOG_LEVEL = "INFO" }
+
+[config]
+difficulty = "easy"        # easy = gemini-1.5-flash，hard = gemini-2.0-flash

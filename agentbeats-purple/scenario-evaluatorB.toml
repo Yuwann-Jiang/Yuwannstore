@@ -1,0 +1,47 @@
+# 方案 B：hisandan/werewolves-agentic-arena-v1（8 个参赛者，ELO 天梯）
+# 需要 8 个 agent；先用我们自己 ×8 把管线跑通（我们的 agent 不调用任何模型，不需要额外 key）
+
+[green_agent]
+agentbeats_id = "019baa79-f486-7dd2-b0f8-dd7fadda7342"
+env = { OPENAI_API_KEY = "${OPENAI_API_KEY}" }
+
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p1"
+env = {}
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p2"
+env = {}
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p3"
+env = {}
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p4"
+env = {}
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p5"
+env = {}
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p6"
+env = {}
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p7"
+env = {}
+
+[[participants]]
+agentbeats_id = "01a20ca8-11a7-7873-b5f0-b944c4702e0f"
+name = "p8"
+env = {}
