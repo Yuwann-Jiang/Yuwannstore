@@ -1,0 +1,37 @@
+{
+  manifest_version: "0.1.0",
+
+  // 我们的 agent 不需要任何外部 key（决策是确定性规则），所以不从调用方要 secret
+  config_schema: {
+    type: "object",
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  },
+
+  slots: {
+    proxy: { kind: "a2a", optional: true },
+  },
+
+  program: {
+    image: "ghcr.io/yuwann-jiang/werewolf-purple:latest",
+    entrypoint: "python -m lab.serve_agentbeats --port 9999",
+
+    network: {
+      endpoints: [
+        { name: "a2a_endpoint", port: 9999 },
+      ],
+    },
+  },
+
+  provides: {
+    a2a: { kind: "a2a", endpoint: "a2a_endpoint" },
+  },
+
+  exports: { a2a: "a2a" },
+
+  metadata: {
+    assessment_config: {},
+    participant_roles: [],
+  },
+}
