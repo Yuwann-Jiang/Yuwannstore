@@ -24,3 +24,20 @@ curl -s localhost:9999/.well-known/agent-card.json | head -c 200
 ```bash
 python -m pytest tests -q      # 5 条：阶段识别、候选人、投票、竞价、发言
 ```
+
+## 本地已验证（2026-11-24）
+
+仓库自带的环境（macOS，Python 3.12.16 由 uv 装到 `~/Documents/DSH/.python`）：
+
+```bash
+cd ~/Documents/DSH && .venv-a2a/bin/python -m lab.serve_agentbeats --port 9999
+curl -s localhost:9999/.well-known/agent-card.json        # → protocolVersion 0.3.0
+```
+
+实测一次真实 A2A 往返（`message/send`）返回：
+
+```json
+{"player_id": "c3d4", "reason": "c3d4场上存在感最强，先清掉带节奏的人"}
+```
+
+传输层与决策逻辑均已跑通。
